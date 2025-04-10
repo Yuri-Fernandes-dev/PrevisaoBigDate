@@ -1,0 +1,15 @@
+	Abra o Visual Studio Code.
+
+1 Pressione Ctrl + "   para abrir o terminal integrado.
+
+2 No terminal, ative o ambiente virtual com o comando: venv\Scripts\activate
+
+3 pip install -r requirements.txt
+(aguarde até que a instalação seja concluída)
+
+
+4 flask run
+
+Quando o link http://127.0.0.1:5000 aparecer no terminal, segure a tecla Ctrl e clique sobre ele
+ para abrir o projeto no navegador.
+

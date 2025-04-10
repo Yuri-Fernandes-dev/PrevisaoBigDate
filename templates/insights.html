@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insights Climáticos - Clima Brasil</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center mt-4">
+            <div class="col-md-10 col-lg-10">
+                <nav class="mb-4">
+                    <ul class="nav nav-pills nav-fill bg-white rounded-pill shadow-sm p-2">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('index') }}">
+                                <i class="fas fa-home me-2"></i>Página Inicial
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('insights') }}">
+                                <i class="fas fa-chart-line me-2"></i>Insights Climáticos
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                
+                <h1 class="text-center text-white mb-4">
+                    <i class="fas fa-chart-bar me-2"></i>Insights Climáticos: {{ weather.cidade }}
+                </h1>
+                
+                <!-- Padrões Sazonais -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="text-center mb-0">
+                            <i class="fas fa-calendar-alt me-2"></i>Padrões Sazonais
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="chart-container mb-4">
+                                    <h4 class="text-center text-primary">Temperatura Média Mensal (°C)</h4>
+                                    <canvas id="tempChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="chart-container">
+                                    <h4 class="text-center text-primary">Precipitação Média Mensal (mm)</h4>
+                                    <canvas id="rainfallChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="insight-box p-3 bg-light rounded">
+                                    <h5 class="text-primary"><i class="fas fa-lightbulb me-2"></i>Conclusões:</h5>
+                                    <ul>
+                                        <li>Os meses de verão (dezembro a março) apresentam temperaturas mais altas, com média acima de 28°C.</li>
+                                        <li>O período mais chuvoso coincide com o verão, com precipitação média acima de 130mm mensais.</li>
+                                        <li>Os meses de inverno (junho a agosto) são mais secos e amenos, com temperaturas em torno de 21-22°C.</li>
+                                        <li>Há uma correlação clara entre temperatura e precipitação nesta região.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Eventos Climáticos Extremos -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header bg-danger text-white">
+                        <h2 class="text-center mb-0">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Eventos Climáticos Extremos
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Ano</th>
+                                        <th>Evento</th>
+                                        <th>Detalhes</th>
+                                        <th>Nível de Impacto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for event in historical.extreme_events %}
+                                    <tr>
+                                        <td>{{ event.ano }}</td>
+                                        <td>{{ event.evento }}</td>
+                                        <td>
+                                            {% if event.temperatura %}
+                                                {{ event.temperatura }}°C
+                                            {% elif event.precipitacao %}
+                                                {{ event.precipitacao }}mm
+                                            {% elif event.duracao %}
+                                                {{ event.duracao }}
+                                            {% elif event.nivel_agua %}
+                                                {{ event.nivel_agua }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge {% if event.impacto == 'Severo' %}bg-danger{% elif event.impacto == 'Alto' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                                {{ event.impacto }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="insight-box p-3 bg-light rounded">
+                                    <h5 class="text-danger"><i class="fas fa-lightbulb me-2"></i>Análise de Risco:</h5>
+                                    <ul>
+                                        <li>A região apresenta risco de eventos extremos, com ocorrências significativas nos últimos 5 anos.</li>
+                                        <li>As ondas de calor são um fenômeno recente e preocupante, sugerindo uma tendência de aquecimento.</li>
+                                        <li>Eventos de precipitação intensa e inundações são frequentes, especialmente no verão.</li>
+                                        <li>É recomendado um sistema de alerta precoce para eventos extremos nesta área.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Impacto na Agricultura -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h2 class="text-center mb-0">
+                            <i class="fas fa-seedling me-2"></i>Impacto na Agricultura
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8 mx-auto">
+                                <div class="chart-container">
+                                    <h4 class="text-center text-success">Impacto de Eventos Climáticos na Produtividade (%)</h4>
+                                    <canvas id="cropImpactChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="insight-box p-3 bg-light rounded">
+                                    <h5 class="text-success"><i class="fas fa-lightbulb me-2"></i>Insights para o Setor Agrícola:</h5>
+                                    <ul>
+                                        <li>O milho apresenta a maior vulnerabilidade a secas prolongadas, com potencial redução de até 40% na produtividade.</li>
+                                        <li>A cana-de-açúcar demonstra maior resiliência a temperaturas elevadas, mas sofre impacto significativo com a seca.</li>
+                                        <li>Períodos de chuva intensa impactam mais significativamente a produção de soja.</li>
+                                        <li>Recomenda-se diversificação de culturas e implementação de técnicas de irrigação eficiente para mitigar riscos.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recomendações -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h2 class="text-center mb-0">
+                            <i class="fas fa-clipboard-list me-2"></i>Atualizações em Breve
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100 border-primary">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-database fa-3x text-primary mb-3"></i>
+                                        <h5 class="card-title">Coleta de Dados</h5>
+                                        <p class="card-text">Implementar sensores meteorológicos adicionais para monitoramento em tempo real.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100 border-danger">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-bell fa-3x text-danger mb-3"></i>
+                                        <h5 class="card-title">Sistema de Alerta</h5>
+                                        <p class="card-text">Desenvolver sistema de alertas precoces para eventos climáticos extremos.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100 border-success">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-leaf fa-3x text-success mb-3"></i>
+                                        <h5 class="card-title">Agricultura Adaptativa</h5>
+                                        <p class="card-text">Promover práticas agrícolas resilientes às mudanças climáticas.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Rodapé -->
+                <div class="text-center mt-4 mb-3">
+                    <a href="https://openweathermap.org/" target="_blank" class="text-white text-decoration-none small">
+                        <span>Dados fornecidos por OpenWeatherMap API</span>
+                        <img src="https://openweathermap.org/themes/openweathermap/assets/vendor/owm/img/logo_OpenWeatherMap_orange.svg" alt="OpenWeatherMap" class="ms-2" height="20">
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Charts Scripts -->
+    <script>
+        // Dados de temperatura
+        const tempData = {{ temp_data|safe }};
+        const rainfallData = {{ rainfall_data|safe }};
+        const cropImpactData = {{ crop_impact_data|safe }};
+        
+        // Temperatura Chart
+        const tempCtx = document.getElementById('tempChart').getContext('2d');
+        const tempChart = new Chart(tempCtx, {
+            type: 'line',
+            data: {
+                labels: tempData.labels,
+                datasets: [{
+                    label: 'Temperatura Média (°C)',
+                    data: tempData.values,
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointBackgroundColor: 'rgba(255, 99, 132, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 15,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '°C';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Rainfall Chart
+        const rainfallCtx = document.getElementById('rainfallChart').getContext('2d');
+        const rainfallChart = new Chart(rainfallCtx, {
+            type: 'bar',
+            data: {
+                labels: rainfallData.labels,
+                datasets: [{
+                    label: 'Precipitação Média (mm)',
+                    data: rainfallData.values,
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value + 'mm';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Crop Impact Chart
+        const cropCtx = document.getElementById('cropImpactChart').getContext('2d');
+        
+        // Preparar dados para o gráfico de impacto nas culturas
+        const crops = Object.keys(cropImpactData);
+        const tempHighData = crops.map(crop => Math.abs(cropImpactData[crop].temp_alta));
+        const droughtData = crops.map(crop => Math.abs(cropImpactData[crop].seca));
+        const heavyRainData = crops.map(crop => Math.abs(cropImpactData[crop].chuva_intensa));
+        
+        const cropChart = new Chart(cropCtx, {
+            type: 'bar',
+            data: {
+                labels: crops,
+                datasets: [
+                    {
+                        label: 'Temperatura Alta',
+                        data: tempHighData,
+                        backgroundColor: 'rgba(255, 99, 132, 0.7)'
+                    },
+                    {
+                        label: 'Seca',
+                        data: droughtData,
+                        backgroundColor: 'rgba(255, 205, 86, 0.7)'
+                    },
+                    {
+                        label: 'Chuva Intensa',
+                        data: heavyRainData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.raw + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
