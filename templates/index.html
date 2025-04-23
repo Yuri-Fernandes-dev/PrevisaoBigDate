@@ -29,6 +29,21 @@
                                 <i class="fas fa-chart-line me-2"></i>Insights Climáticos
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('mapa') }}">
+                                <i class="fas fa-map-marked-alt me-2"></i>Visualizar Mapa
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('desastres_naturais') }}">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('sobre') }}">
+                                <i class="fas fa-users me-2"></i>Sobre
+                            </a>
+                        </li>
                     </ul>
                 </nav>
                 
@@ -82,6 +97,14 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('mapa') }}" class="btn btn-outline-primary me-2">
+                                <i class="fas fa-map-marked-alt me-2"></i>Ver no Mapa
+                            </a>
+                            <a href="{{ url_for('mapa_externo') }}" class="btn btn-outline-success">
+                                <i class="fab fa-google me-2"></i>Abrir no Google Maps
+                            </a>
                         </div>
                     </div>
                 </div>

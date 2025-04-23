@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+
+{% block title %}Desastres Naturais - IBGE{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center mb-4">Desastres Naturais no Brasil - Dados do IBGE</h2>
+            <p class="text-center">Esta página apresenta informações sobre desastres naturais ocorridos no Brasil. Os dados são baseados em registros do IBGE e outras fontes oficiais.</p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <label for="estadoFilter" class="form-label">Filtrar por Estado:</label>
+            <select class="form-select" id="estadoFilter">
+                <option value="">Todos os Estados</option>
+                {% for estado in estados %}
+                <option value="{{ estado }}">{{ estado }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label for="tipoFilter" class="form-label">Filtrar por Tipo de Desastre:</label>
+            <select class="form-select" id="tipoFilter">
+                {% for tipo in tipos_desastres %}
+                <option value="{{ tipo }}">{{ tipo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- Visualização de Dados -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Gráfico de Desastres por Tipo</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="desastresChart" width="400" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Impacto</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Total de desastres
+                            <span class="badge bg-primary rounded-pill">{{ desastres|length }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Inundações
+                            <span class="badge bg-info rounded-pill">{{ desastres|selectattr('tipo', 'equalto', 'Inundação')|list|length }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Deslizamentos
+                            <span class="badge bg-danger rounded-pill">{{ desastres|selectattr('tipo', 'equalto', 'Deslizamento')|list|length }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Secas
+                            <span class="badge bg-warning rounded-pill">{{ desastres|selectattr('tipo', 'equalto', 'Seca')|list|length }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Incêndios
+                            <span class="badge bg-danger rounded-pill">{{ desastres|selectattr('tipo', 'equalto', 'Incêndio')|list|length }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de Desastres -->
+    <div class="row">
+        <div class="col-12">
+            <h3 class="mb-3">Lista de Desastres Registrados</h3>
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Local</th>
+                            <th>Data</th>
+                            <th>Pessoas Afetadas</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="desastresTable">
+                        {% for desastre in desastres %}
+                        <tr data-tipo="{{ desastre.tipo }}" data-local="{{ desastre.local }}">
+                            <td><span class="badge bg-{{ desastre.badge_class }}">{{ desastre.tipo }}</span></td>
+                            <td>{{ desastre.local }}</td>
+                            <td>{{ desastre.data }}</td>
+                            <td>{{ desastre.pessoas_afetadas }}</td>
+                            <td>{{ desastre.detalhes }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Link para o IBGE -->
+    <div class="row mt-4">
+        <div class="col-12 text-center">
+            <a href="https://www.ibge.gov.br/" target="_blank" class="btn btn-outline-primary">
+                <i class="fas fa-external-link-alt"></i> Visitar página do IBGE
+            </a>
+            <p class="mt-2 small text-muted">Para mais informações sobre desastres naturais e dados geográficos, visite o site oficial do IBGE.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Inicializar gráfico de desastres
+    const ctx = document.getElementById('desastresChart').getContext('2d');
+    
+    // Preparar dados para o gráfico
+    const tiposDeDesastres = {
+        'Inundação': {{ desastres|selectattr('tipo', 'equalto', 'Inundação')|list|length }},
+        'Deslizamento': {{ desastres|selectattr('tipo', 'equalto', 'Deslizamento')|list|length }},
+        'Seca': {{ desastres|selectattr('tipo', 'equalto', 'Seca')|list|length }},
+        'Incêndio': {{ desastres|selectattr('tipo', 'equalto', 'Incêndio')|list|length }}
+    };
+    
+    const desastresChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(tiposDeDesastres),
+            datasets: [{
+                label: 'Número de Ocorrências',
+                data: Object.values(tiposDeDesastres),
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(255, 99, 132, 0.6)',
+                    'rgba(255, 206, 86, 0.6)',
+                    'rgba(255, 99, 132, 0.6)'
+                ],
+                borderColor: [
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(255, 99, 132, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+    
+    // Filtros
+    document.getElementById('estadoFilter').addEventListener('change', filtrarDesastres);
+    document.getElementById('tipoFilter').addEventListener('change', filtrarDesastres);
+    
+    function filtrarDesastres() {
+        const estadoSelecionado = document.getElementById('estadoFilter').value;
+        const tipoSelecionado = document.getElementById('tipoFilter').value;
+        
+        const linhas = document.querySelectorAll('#desastresTable tr');
+        
+        linhas.forEach(function(linha) {
+            if (!linha.hasAttribute('data-tipo')) {
+                return; // Pular linhas de cabeçalho
+            }
+            
+            const tipo = linha.getAttribute('data-tipo');
+            const local = linha.getAttribute('data-local');
+            
+            let correspondeEstado = true;
+            let correspondeTipo = true;
+            
+            // Verificar filtro de estado
+            if (estadoSelecionado && estadoSelecionado !== "") {
+                correspondeEstado = local.includes(estadoSelecionado);
+            }
+            
+            // Verificar filtro de tipo
+            if (tipoSelecionado && tipoSelecionado !== "Todos") {
+                correspondeTipo = tipo === tipoSelecionado;
+            }
+            
+            // Mostrar ou esconder com base nos filtros
+            if (correspondeEstado && correspondeTipo) {
+                linha.style.display = '';
+            } else {
+                linha.style.display = 'none';
+            }
+        });
+    }
+</script>
+{% endblock %} 

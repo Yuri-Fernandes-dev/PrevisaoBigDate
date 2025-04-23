@@ -31,6 +31,21 @@
                                 <i class="fas fa-chart-line me-2"></i>Insights Climáticos
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('mapa') }}">
+                                <i class="fas fa-map-marked-alt me-2"></i>Visualizar Mapa
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('desastres_naturais') }}">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('sobre') }}">
+                                <i class="fas fa-users me-2"></i>Sobre
+                            </a>
+                        </li>
                     </ul>
                 </nav>
                 
@@ -172,7 +187,7 @@
                 <div class="card shadow-lg mb-4">
                     <div class="card-header bg-info text-white">
                         <h2 class="text-center mb-0">
-                            <i class="fas fa-clipboard-list me-2"></i>Atualizações em Breve
+                            <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
                         </h2>
                     </div>
                     <div class="card-body">
@@ -180,30 +195,36 @@
                             <div class="col-md-4 mb-3">
                                 <div class="card h-100 border-primary">
                                     <div class="card-body text-center">
-                                        <i class="fas fa-database fa-3x text-primary mb-3"></i>
-                                        <h5 class="card-title">Coleta de Dados</h5>
-                                        <p class="card-text">Implementar sensores meteorológicos adicionais para monitoramento em tempo real.</p>
+                                        <i class="fas fa-water fa-3x text-primary mb-3"></i>
+                                        <h5 class="card-title">Inundações</h5>
+                                        <p class="card-text">Monitoramento e análise de inundações e enchentes em diversas regiões do Brasil.</p>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-md-4 mb-3">
                                 <div class="card h-100 border-danger">
                                     <div class="card-body text-center">
-                                        <i class="fas fa-bell fa-3x text-danger mb-3"></i>
-                                        <h5 class="card-title">Sistema de Alerta</h5>
-                                        <p class="card-text">Desenvolver sistema de alertas precoces para eventos climáticos extremos.</p>
+                                        <i class="fas fa-mountain fa-3x text-danger mb-3"></i>
+                                        <h5 class="card-title">Deslizamentos</h5>
+                                        <p class="card-text">Incidência de deslizamentos de terra e áreas de risco monitoradas pelo IBGE.</p>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-md-4 mb-3">
-                                <div class="card h-100 border-success">
+                                <div class="card h-100 border-warning">
                                     <div class="card-body text-center">
-                                        <i class="fas fa-leaf fa-3x text-success mb-3"></i>
-                                        <h5 class="card-title">Agricultura Adaptativa</h5>
-                                        <p class="card-text">Promover práticas agrícolas resilientes às mudanças climáticas.</p>
+                                        <i class="fas fa-sun fa-3x text-warning mb-3"></i>
+                                        <h5 class="card-title">Secas</h5>
+                                        <p class="card-text">Períodos de estiagem e impacto das secas nas diferentes regiões brasileiras.</p>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                        <div class="text-center mt-4">
+                            <p class="lead">Acesse nossa página de desastres naturais para informações detalhadas sobre ocorrências, impactos e medidas preventivas.</p>
+                            <a href="{{ url_for('desastres_naturais') }}" class="btn btn-danger btn-lg">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Ver Desastres Naturais
+                            </a>
                         </div>
                     </div>
                 </div>
