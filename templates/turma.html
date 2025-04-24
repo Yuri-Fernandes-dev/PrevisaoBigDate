@@ -61,6 +61,10 @@
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
         
+        .yuri-photo {
+            object-position: 0 -15px; /* Ajusta a posição da foto para mostrar mais o rosto */
+        }
+        
         .team-content {
             padding: 20px;
         }
@@ -201,7 +205,15 @@
                     <div class="col-md-6 col-lg-3 mb-4" data-aos="zoom-in" data-aos-delay="{{ loop.index * 100 }}">
                         <div class="team-card">
                             <div class="team-image">
+                                {% if aluno.nome == "Yuri Fernandes de Oliveira" %}
+                                <img src="{{ url_for('static', filename='img/team/yuri.jpg') }}" alt="{{ aluno.nome }}" class="student-photo yuri-photo">
+                                {% elif aluno.nome == "Peterson Costa da Silva" %}
+                                <img src="{{ url_for('static', filename='img/team/peterson.jpg') }}" alt="{{ aluno.nome }}" class="student-photo">
+                                {% elif aluno.nome == "Rodrigo Ortega G F Camacho" %}
+                                <img src="{{ url_for('static', filename='img/team/rodrigo.png') }}" alt="{{ aluno.nome }}" class="student-photo">
+                                {% else %}
                                 <img src="{{ url_for('static', filename='img/profile-placeholder.jpg') }}" alt="{{ aluno.nome }}" class="student-photo">
+                                {% endif %}
                             </div>
                             <div class="team-content text-center">
                                 {% if aluno.nome == "Yuri Fernandes de Oliveira" %}
@@ -211,15 +223,20 @@
                                 {% endif %}
                                 <h4>{{ aluno.nome }}</h4>
                                 <div class="social-links">
+                                    {% if aluno.nome == "Peterson Costa da Silva" %}
+                                    <a href="https://github.com/PetersonPSC/PetersonPSC" class="github" target="_blank" title="GitHub">
+                                        <i class="fab fa-github"></i>
+                                    </a>
+                                    {% else %}
                                     <a href="https://github.com/Yuri-Fernandes-dev/PrevisaoBigDate.git" class="github" target="_blank" title="GitHub">
                                         <i class="fab fa-github"></i>
                                     </a>
-                                    <a href="{{ aluno.linkedin }}" class="linkedin" target="_blank" title="LinkedIn">
-                                        <i class="fab fa-linkedin-in"></i>
-                                    </a>
+                                    {% endif %}
+                                    {% if aluno.nome == "Yuri Fernandes de Oliveira" %}
                                     <a href="https://yurioliveira.netlify.app/" class="bg-info" target="_blank" title="Portfólio">
                                         <i class="fas fa-globe"></i>
                                     </a>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>

@@ -68,11 +68,75 @@ def formatar_nome_cidade(cidade):
     return ' '.join(palavras_formatadas)
 
 def buscar_localizacao(nome_lugar):
+    """Busca as coordenadas de um lugar usando o Nominatim"""
+    # Lista de cidades da região metropolitana do RJ que podem ser ambíguas
+    cidades_rj = [
+        'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
+        'Nilópolis', 'Magé', 'Itaguaí', 'Japeri', 'Queimados', 'Seropédica', 'Paracambi'
+    ]
+    
+    # Verificar se o nome do lugar é uma das cidades que precisam de especificação
+    nome_lugar_lower = nome_lugar.lower().strip()
+    for cidade in cidades_rj:
+        if cidade.lower() == nome_lugar_lower or f"{cidade.lower()}" == nome_lugar_lower:
+            # Adicionar ", RJ" ao nome para melhorar a precisão
+            nome_lugar = f"{nome_lugar}, Rio de Janeiro, Brasil"
+            app.logger.info(f"Nome ajustado para: {nome_lugar}")
+            break
+    
+    # Se o nome do lugar não contém Brasil ou RJ, verificar se é uma cidade brasileira
+    if ", brasil" not in nome_lugar_lower and "brazil" not in nome_lugar_lower and ", rj" not in nome_lugar_lower and "rio de janeiro" not in nome_lugar_lower:
+        # Verificar se é um nome de cidade ou estado brasileiro comum
+        cidades_estados_br = [
+            'São Paulo', 'Rio de Janeiro', 'Brasília', 'Salvador', 'Fortaleza', 
+            'Belo Horizonte', 'Manaus', 'Curitiba', 'Recife', 'Goiânia', 'Porto Alegre',
+            'Belém', 'Guarulhos', 'Campinas', 'São Luís', 'Maceió', 'Natal', 'Teresina',
+            'Campo Grande', 'João Pessoa', 'Ribeirão Preto', 'Uberlândia', 'Contagem',
+            'Sorocaba', 'Aracaju', 'Feira de Santana', 'Cuiabá', 'Joinville', 'Juiz de Fora',
+            'Florianópolis', 'Paraná', 'Minas Gerais', 'Bahia', 'Santa Catarina', 'Acre',
+            'Alagoas', 'Amapá', 'Amazonas', 'Ceará', 'Distrito Federal', 'Espírito Santo',
+            'Goiás', 'Maranhão', 'Mato Grosso', 'Pará', 'Paraíba', 'Pernambuco',
+            'Piauí', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
+            'Roraima', 'Sergipe', 'Tocantins'
+        ]
+        
+        for cidade_estado in cidades_estados_br:
+            if cidade_estado.lower() in nome_lugar_lower:
+                # Adicionar Brasil ao nome para melhorar a precisão
+                nome_lugar = f"{nome_lugar}, Brasil"
+                app.logger.info(f"Adicionado Brasil ao nome: {nome_lugar}")
+                break
+    
     geolocator = Nominatim(user_agent="clima_brasil")
-    location = geolocator.geocode(nome_lugar)
-    if location:
-        return location.latitude, location.longitude, location.address
-    return None, None, None
+    
+    try:
+        # Primeiro tenta com o nome modificado para maior precisão
+        location = geolocator.geocode(nome_lugar, exactly_one=True)
+        
+        if location:
+            app.logger.info(f"Localização encontrada: {location.address}")
+            return location.latitude, location.longitude, location.address
+        
+        # Se não encontrar, tenta novamente forçando a busca no Brasil
+        if ", brasil" not in nome_lugar_lower and "brazil" not in nome_lugar_lower:
+            location = geolocator.geocode(f"{nome_lugar}, Brasil", exactly_one=True)
+            if location:
+                app.logger.info(f"Localização encontrada com 'Brasil': {location.address}")
+                return location.latitude, location.longitude, location.address
+        
+        # Última tentativa: especificar ainda mais para cidades ambíguas
+        for cidade in cidades_rj:
+            if cidade.lower() in nome_lugar_lower:
+                location = geolocator.geocode(f"{cidade}, Baixada Fluminense, Rio de Janeiro, Brasil", exactly_one=True)
+                if location:
+                    app.logger.info(f"Localização encontrada com Baixada Fluminense: {location.address}")
+                    return location.latitude, location.longitude, location.address
+        
+        app.logger.warning(f"Localização não encontrada para: {nome_lugar}")
+        return None, None, None
+    except Exception as e:
+        app.logger.error(f"Erro ao buscar localização: {str(e)}")
+        return None, None, None
 
 def get_weather_data(city=None, lat=None, lon=None):
     api_key = API_KEY  # Usar a chave definida no topo do arquivo
@@ -392,8 +456,16 @@ def buscar():
             # Armazenar dados na sessão para uso em outras rotas
             session['weather_data'] = weather_data
             
-            # Redirecionar para página de detalhes
-            return redirect(url_for('detalhes'))
+            # Armazenar última cidade e coordenadas para uso futuro
+            session['last_city'] = weather_data['cidade']
+            session['last_lat'] = weather_data['lat']
+            session['last_lon'] = weather_data['lon']
+            
+            # Obter previsão do tempo
+            forecast_data = get_forecast_data(weather_data['lat'], weather_data['lon'])
+            
+            # Renderizar diretamente a página index com os dados obtidos
+            return render_template('index.html', weather=weather_data, forecast=forecast_data)
         except Exception as e:
             # Tratar erros inesperados
             app.logger.error(f"Erro ao buscar dados do clima: {str(e)}")
@@ -406,9 +478,24 @@ def insights():
         cidade_pesquisada = request.args.get('cidade', None)
         
         if cidade_pesquisada:
-            # Se temos uma nova pesquisa, buscar os dados desta cidade
-            app.logger.info(f"Nova pesquisa de insights para: {cidade_pesquisada}")
-            weather_data, error = get_weather_data(city=cidade_pesquisada)
+            # Se temos uma nova pesquisa, verificar se é uma cidade do RJ que precisa de especificação
+            cidades_rj = [
+                'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
+                'Nilópolis', 'Magé', 'Itaguaí', 'Japeri', 'Queimados', 'Seropédica', 'Paracambi'
+            ]
+            
+            cidade_lower = cidade_pesquisada.lower().strip()
+            cidade_especificada = cidade_pesquisada
+            
+            for cidade_rj in cidades_rj:
+                if cidade_rj.lower() == cidade_lower:
+                    cidade_especificada = f"{cidade_pesquisada}, Rio de Janeiro"
+                    app.logger.info(f"Especificando cidade do RJ para insights: {cidade_especificada}")
+                    break
+            
+            # Buscar os dados desta cidade com a especificação adequada
+            app.logger.info(f"Nova pesquisa de insights para: {cidade_especificada}")
+            weather_data, error = get_weather_data(city=cidade_especificada)
             if not error:
                 # Armazenar na sessão apenas se não houver erro
                 session['last_city'] = weather_data['cidade']
@@ -532,6 +619,7 @@ def get_map_data(cidade, lat, lon):
 
 def obter_desastres_por_regiao(cidade):
     """Obtém desastres naturais específicos para a região pesquisada"""
+    app.logger.info(f"Buscando desastres para cidade: {cidade}")
     
     # Primeira tentativa: buscar desastres específicos para a cidade
     desastres_por_cidade = {
@@ -605,6 +693,42 @@ def obter_desastres_por_regiao(cidade):
                 'detalhes': 'Deslizamento que atingiu várias casas na comunidade do Borel, na Tijuca.'
             }
         ],
+        "Maricá": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Maricá, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '5.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Maricá, afetando principalmente áreas próximas à lagoa.'
+            },
+            {
+                'tipo': 'Erosão Costeira',
+                'local': 'Praias de Maricá, RJ',
+                'data': '2020-2023',
+                'pessoas_afetadas': 'Indeterminado',
+                'badge_class': 'warning',
+                'detalhes': 'Processo contínuo de erosão nas praias de Maricá, afetando moradores e comércio local.'
+            }
+        ],
+        "Mesquita": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Mesquita, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '8.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Enchentes em diversos bairros de Mesquita após fortes chuvas, afetando principalmente áreas próximas ao Rio Sarapuí.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Chatuba, Mesquita',
+                'data': 'Fev/2020',
+                'pessoas_afetadas': '3.500+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos no bairro da Chatuba após período de chuvas intensas.'
+            }
+        ],
         "São Paulo": [
             {
                 'tipo': 'Inundação',
@@ -661,14 +785,85 @@ def obter_desastres_por_regiao(cidade):
         ]
     }
     
-    # Verificar se temos dados específicos para a cidade por nome exato
+    # Lista de cidades conhecidas do estado do Rio de Janeiro
+    cidades_rj = [
+        'Angra dos Reis', 'Araruama', 'Armação dos Búzios', 'Arraial do Cabo', 
+        'Barra do Piraí', 'Barra Mansa', 'Belford Roxo', 'Bom Jardim', 
+        'Cabo Frio', 'Cachoeiras de Macacu', 'Campos dos Goytacazes', 'Cantagalo', 
+        'Carmo', 'Casimiro de Abreu', 'Duque de Caxias', 'Guapimirim', 
+        'Iguaba Grande', 'Itaboraí', 'Itaguaí', 'Italva', 'Itaperuna', 
+        'Japeri', 'Macaé', 'Magé', 'Mangaratiba', 'Maricá', 'Mesquita', 
+        'Miguel Pereira', 'Miracema', 'Natividade', 'Nilópolis', 'Niterói', 
+        'Nova Friburgo', 'Nova Iguaçu', 'Paracambi', 'Paraíba do Sul', 
+        'Paraty', 'Paty do Alferes', 'Petrópolis', 'Pinheiral', 'Piraí', 
+        'Porciúncula', 'Porto Real', 'Quatis', 'Queimados', 'Resende', 
+        'Rio Bonito', 'Rio Claro', 'Rio das Ostras', 'Rio de Janeiro', 
+        'Santa Maria Madalena', 'Santo Antônio de Pádua', 'São Fidélis', 
+        'São Francisco de Itabapoana', 'São Gonçalo', 'São João de Meriti', 
+        'São João de Meriti', 'São José de Ubá', 'São José do Vale do Rio Preto', 
+        'São Pedro da Aldeia', 'São Sebastião do Alto', 'Saquarema', 'Seropédica', 
+        'Silva Jardim', 'Tanguá', 'Teresópolis', 'Três Rios', 'Valença', 
+        'Varre-Sai', 'Vassouras', 'Volta Redonda'
+    ]
+    
+    # Lista de termos que indicam Rio de Janeiro
+    termos_rj = ['rj', 'rio de janeiro', 'fluminense', 'carioca', 'baixada', 'baixada fluminense']
+    
+    # Verificar se a cidade solicitada é explicitamente do Rio de Janeiro
+    cidade_lower = cidade.lower()
+    
+    # Primeira verificação: a cidade contém "Rio de Janeiro" ou ", RJ"
+    for termo in ['rio de janeiro', ', rj']:
+        if termo in cidade_lower:
+            app.logger.info(f"Cidade {cidade} contém termo explícito do Rio de Janeiro: {termo}")
+            
+            # Extrair o nome da cidade antes de "Rio de Janeiro" ou ", RJ"
+            if ',' in cidade_lower:
+                nome_cidade = cidade_lower.split(',')[0].strip()
+            else:
+                partes = cidade_lower.split(' rio de janeiro')
+                nome_cidade = partes[0].strip()
+            
+            # Verificar se temos esse nome específico no dicionário
+            for nome_conhecido, desastres in desastres_por_cidade.items():
+                if nome_conhecido.lower() == nome_cidade:
+                    app.logger.info(f"Encontrado desastre específico para {nome_conhecido}")
+                    return desastres
+            
+            # Se não encontrou, usar os desastres do Rio de Janeiro
+            app.logger.info(f"Usando desastres gerais do Rio de Janeiro para {cidade}")
+            return desastres_por_cidade.get("Rio de Janeiro", [])
+    
+    # Segunda verificação: nome da cidade exato
     for nome_cidade, desastres in desastres_por_cidade.items():
-        # Verificar se o nome da cidade está contido na consulta ou vice-versa
-        if nome_cidade.lower() in cidade.lower() or cidade.lower() in nome_cidade.lower():
+        if nome_cidade.lower() == cidade_lower:
             app.logger.info(f"Encontrados desastres específicos para {nome_cidade}")
             return desastres
     
-    # Se não encontrou correspondência exata, continuar com o código existente
+    # Terceira verificação: verificar se o nome da cidade está na lista de cidades do RJ
+    for cidade_rj in cidades_rj:
+        if cidade_rj.lower() == cidade_lower:
+            app.logger.info(f"Cidade {cidade} identificada como cidade do Rio de Janeiro")
+            # Se for cidade do RJ mas não temos dados específicos, usar dados do Rio de Janeiro
+            return desastres_por_cidade.get("Rio de Janeiro", [])
+    
+    # Quarta verificação: verificar substring no nome da cidade
+    for cidade_rj in cidades_rj:
+        if cidade_rj.lower() in cidade_lower:
+            app.logger.info(f"Cidade {cidade} identificada como contendo nome de cidade do Rio de Janeiro: {cidade_rj}")
+            # Verificar se temos dados específicos para esta cidade
+            if cidade_rj in desastres_por_cidade:
+                return desastres_por_cidade[cidade_rj]
+            # Se não temos dados específicos, usar dados do Rio de Janeiro
+            return desastres_por_cidade.get("Rio de Janeiro", [])
+    
+    # Quinta verificação: verificar se contém termos relacionados ao Rio de Janeiro
+    for termo in termos_rj:
+        if termo in cidade_lower:
+            app.logger.info(f"Cidade {cidade} contém termo relacionado ao Rio de Janeiro: {termo}")
+            return desastres_por_cidade.get("Rio de Janeiro", [])
+    
+    # Se não encontramos nada até aqui, seguir com a lógica anterior
     # Mapeamento de cidades para suas regiões/estados
     mapeamento_regioes = {
         'Rio de Janeiro': 'Rio de Janeiro',
@@ -697,26 +892,19 @@ def obter_desastres_por_regiao(cidade):
         'Boa Vista': 'Roraima',
         'Macapá': 'Amapá',
         'Palmas': 'Tocantins',
-        'Rio Branco': 'Acre',
-        'Belford Roxo': 'Rio de Janeiro',
-        'Nova Iguaçu': 'Rio de Janeiro',
-        'Duque de Caxias': 'Rio de Janeiro',
-        'São Gonçalo': 'Rio de Janeiro',
-        'Niterói': 'Rio de Janeiro'
+        'Rio Branco': 'Acre'
     }
     
-    # Adicionando correspondência para cidades da Baixada Fluminense
-    cidades_rj = ['Belford Roxo', 'Nova Iguaçu', 'Duque de Caxias', 'São João de Meriti', 
-                  'Nilópolis', 'Mesquita', 'Queimados', 'Japeri', 'Magé', 'Guapimirim', 
-                  'Seropédica', 'Itaguaí', 'Paracambi']
-    
+    # Adicionar todas as cidades do RJ ao mapeamento
     for cidade_rj in cidades_rj:
-        if cidade_rj.lower() in cidade.lower():
-            app.logger.info(f"Cidade {cidade} identificada como parte da região metropolitana do Rio de Janeiro")
-            mapeamento_regioes[cidade] = 'Rio de Janeiro'
-            break
+        mapeamento_regioes[cidade_rj] = 'Rio de Janeiro'
     
-    # Se a cidade não estiver no mapeamento, tenta identificar a região pelo nome
+    # Se a cidade não estiver no mapeamento, tenta verificar se contém Rio de Janeiro
+    if cidade not in mapeamento_regioes:
+        if "rio" in cidade_lower or "rj" in cidade_lower:
+            mapeamento_regioes[cidade] = 'Rio de Janeiro'
+    
+    # Se ainda não estiver no mapeamento, tenta identificar a região pelo nome
     if cidade not in mapeamento_regioes:
         for estado, uf in [
             ('Acre', 'AC'), ('Alagoas', 'AL'), ('Amapá', 'AP'), ('Amazonas', 'AM'),
@@ -727,12 +915,41 @@ def obter_desastres_por_regiao(cidade):
             ('Rio Grande do Sul', 'RS'), ('Rondônia', 'RO'), ('Roraima', 'RR'), ('Santa Catarina', 'SC'),
             ('São Paulo', 'SP'), ('Sergipe', 'SE'), ('Tocantins', 'TO')
         ]:
-            if estado.lower() in cidade.lower() or uf.lower() in cidade.lower():
+            if estado.lower() in cidade_lower or uf.lower() in cidade_lower:
                 mapeamento_regioes[cidade] = estado
                 break
     
     # Região/estado da cidade pesquisada
     regiao = mapeamento_regioes.get(cidade, "Região não identificada")
+    app.logger.info(f"Região identificada para {cidade}: {regiao}")
+    
+    # Desastres específicos do Rio de Janeiro (para cidades do RJ não listadas explicitamente)
+    desastres_rio_de_janeiro = [
+        {
+            'tipo': 'Deslizamento',
+            'local': 'Região Serrana, RJ',
+            'data': 'Jan/2011',
+            'pessoas_afetadas': '30.000+',
+            'badge_class': 'danger',
+            'detalhes': 'Um dos piores desastres naturais da história do Brasil, com mais de 900 mortes por deslizamentos de terra após chuvas intensas.'
+        },
+        {
+            'tipo': 'Inundação',
+            'local': 'Baixada Fluminense, RJ',
+            'data': 'Jan/2023',
+            'pessoas_afetadas': '50.000+',
+            'badge_class': 'primary',
+            'detalhes': 'Fortes chuvas causaram inundações em várias cidades da região metropolitana do Rio de Janeiro.'
+        },
+        {
+            'tipo': 'Deslizamento',
+            'local': 'Niterói, RJ',
+            'data': 'Abr/2010',
+            'pessoas_afetadas': '5.000+',
+            'badge_class': 'danger',
+            'detalhes': 'Deslizamento no Morro do Bumba que soterrou dezenas de casas e deixou muitas vítimas.'
+        }
+    ]
     
     # Base de dados simulada de desastres naturais para cada região
     desastres_por_regiao = {
@@ -762,32 +979,7 @@ def obter_desastres_por_regiao(cidade):
                 'detalhes': 'Seca intensa que afetou a produção agrícola do estado, com perdas de bilhões na safra de soja e milho.'
             }
         ],
-        'Rio de Janeiro': [
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Petrópolis, RJ',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '25.000+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos de terra em Petrópolis/RJ devido às chuvas intensas, resultando em mais de 200 mortes.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Baixada Fluminense, RJ',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '50.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram inundações em cidades como Belford Roxo, Nova Iguaçu e Duque de Caxias, afetando dezenas de bairros.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Região Serrana, RJ',
-                'data': 'Jan/2011',
-                'pessoas_afetadas': '30.000+',
-                'badge_class': 'danger',
-                'detalhes': 'Um dos piores desastres naturais da história do Brasil, com mais de 900 mortes por deslizamentos de terra após chuvas intensas.'
-            }
-        ],
+        'Rio de Janeiro': desastres_rio_de_janeiro,
         'São Paulo': [
             {
                 'tipo': 'Inundação',
@@ -813,70 +1005,13 @@ def obter_desastres_por_regiao(cidade):
                 'badge_class': 'primary',
                 'detalhes': 'Alagamentos recorrentes durante o período de chuvas, afetando diversas regiões da cidade e o trânsito.'
             }
-        ],
-        'Amazonas': [
-            {
-                'tipo': 'Inundação',
-                'local': 'Manaus e região',
-                'data': 'Mai/2021',
-                'pessoas_afetadas': '450.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Cheia histórica do Rio Negro, atingindo 30 metros e afetando comunidades ribeirinhas e bairros de Manaus.'
-            },
-            {
-                'tipo': 'Seca',
-                'local': 'Bacia Amazônica',
-                'data': '2010',
-                'pessoas_afetadas': '200.000+',
-                'badge_class': 'warning',
-                'detalhes': 'Seca extrema que reduziu drasticamente o nível dos rios, isolando comunidades e afetando a navegação fluvial.'
-            },
-            {
-                'tipo': 'Incêndio Florestal',
-                'local': 'Sul do Amazonas',
-                'data': '2019-2020',
-                'pessoas_afetadas': 'Indeterminado',
-                'badge_class': 'danger',
-                'detalhes': 'Queimadas de grande proporção que destruíram áreas significativas de floresta e afetaram a qualidade do ar.'
-            }
-        ],
-        'Bahia': [
-            {
-                'tipo': 'Inundação',
-                'local': 'Sul da Bahia',
-                'data': 'Dez/2021',
-                'pessoas_afetadas': '500.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram inundações em diversas cidades da Bahia, destruindo pontes, estradas e casas.'
-            },
-            {
-                'tipo': 'Seca',
-                'local': 'Sertão da Bahia',
-                'data': '2012-2017',
-                'pessoas_afetadas': '1.000.000+',
-                'badge_class': 'warning',
-                'detalhes': 'Período de seca prolongada que afetou o abastecimento de água e a agricultura no semiárido baiano.'
-            }
-        ],
-        'Mato Grosso': [
-            {
-                'tipo': 'Incêndio',
-                'local': 'Pantanal',
-                'data': 'Jul-Out/2020',
-                'pessoas_afetadas': '3.400.000+ ha',
-                'badge_class': 'danger',
-                'detalhes': 'Incêndios de grandes proporções que destruíram mais de 3,4 milhões de hectares do bioma Pantanal.'
-            },
-            {
-                'tipo': 'Seca',
-                'local': 'Norte do Mato Grosso',
-                'data': '2020-2021',
-                'pessoas_afetadas': 'Agricultura',
-                'badge_class': 'warning',
-                'detalhes': 'Seca prolongada que afetou a produção agrícola, especialmente de soja e milho.'
-            }
         ]
     }
+    
+    # Verificar primeiramente se a região é Rio de Janeiro (pois já adicionamos muitas cidades do RJ)
+    if regiao == "Rio de Janeiro":
+        app.logger.info(f"Cidade {cidade} identificada como do estado do Rio de Janeiro")
+        return desastres_rio_de_janeiro
     
     # Desastres para outras regiões do Nordeste
     desastres_nordeste = [
@@ -1006,11 +1141,23 @@ def mapa():
     try:
         cidade = request.args.get('cidade', 'Brasília')  # Cidade padrão: Brasília
         
-        # Traduzir a cidade para inglês para melhor precisão na API
-        cidade_en = formatar_nome_cidade(cidade)
+        # Adicionar verificação para cidades do RJ que precisam de especificação
+        cidades_rj = [
+            'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
+            'Nilópolis', 'Magé', 'Itaguaí', 'Japeri', 'Queimados', 'Seropédica', 'Paracambi'
+        ]
+        
+        cidade_lower = cidade.lower().strip()
+        cidade_especificada = cidade
+        
+        for cidade_rj in cidades_rj:
+            if cidade_rj.lower() == cidade_lower:
+                cidade_especificada = f"{cidade}, Rio de Janeiro"
+                app.logger.info(f"Especificando cidade do RJ: {cidade_especificada}")
+                break
         
         # Tentar buscar dados direto via get_weather_data para reusar o tratamento de erros
-        weather_data, error = get_weather_data(city=cidade_en)
+        weather_data, error = get_weather_data(city=cidade_especificada)
         
         if error:
             # Se houver erro, mostrar uma mensagem e criar dados padrão
@@ -1161,10 +1308,7 @@ def desastres_naturais():
     # Lista de estados brasileiros para o filtro
     estados = [
         "Acre", "Alagoas", "Amapá", "Amazonas", "Bahia", "Ceará", "Distrito Federal",
-        "Espírito Santo", "Goiás", "Maranhão", "Mato Grosso", "Mato Grosso do Sul",
-        "Minas Gerais", "Pará", "Paraíba", "Paraná", "Pernambuco", "Piauí",
-        "Rio de Janeiro", "Rio Grande do Norte", "Rio Grande do Sul", "Rondônia",
-        "Roraima", "Santa Catarina", "São Paulo", "Sergipe", "Tocantins"
+        "Espírito Santo", "Goiás", "Maranhão", "Paraíba", "Pernambuco", "Piauí", "Rio Grande do Norte", "Sergipe"
     ]
     
     # Lista de tipos de desastres para o filtro
@@ -1260,57 +1404,6 @@ def turma():
     ]
     
     return render_template('turma.html', alunos=alunos)
-
-@app.route('/detalhes')
-def detalhes():
-    # Verificar se há dados climáticos na sessão
-    weather_data = session.get('weather_data')
-    if not weather_data:
-        # Se não houver dados, redirecionar para a página inicial
-        return redirect(url_for('index'))
-    
-    # Extrair as coordenadas
-    lat = weather_data['lat']
-    lon = weather_data['lon']
-    cidade = weather_data['cidade']
-    
-    # Obter dados detalhados do clima atual
-    clima = {
-        'temperatura': weather_data['temperatura'],
-        'sensacao': weather_data.get('sensacao', weather_data['temperatura']),
-        'temp_max': weather_data.get('temp_max', round(weather_data['temperatura'] + 2)),
-        'temp_min': weather_data.get('temp_min', round(weather_data['temperatura'] - 2)),
-        'umidade': weather_data['umidade'],
-        'velocidade_vento': weather_data['vento'],
-        'descricao': weather_data['descricao'],
-        'icone': weather_data['icone'],
-        'pressao': weather_data.get('pressao', 1013),
-        'nascer_do_sol': '06:00',  # Valores padrão, em uma implementação real viriam da API
-        'por_do_sol': '18:00',     # Valores padrão, em uma implementação real viriam da API
-        'visibilidade': 10         # Valor padrão, em uma implementação real viria da API
-    }
-    
-    # Obter dados de previsão baseados na latitude e longitude da cidade
-    try:
-        previsao = get_forecast_data(lat, lon)
-        if previsao is None:
-            previsao = []  # Garantir que é uma lista vazia se não há dados
-    except Exception as e:
-        app.logger.error(f"Erro ao obter previsão: {e}")
-        previsao = []  # Em caso de erro, usar uma lista vazia
-    
-    # Armazenar dados adicionais na sessão para uso em outras rotas
-    session['last_city'] = cidade
-    session['last_lat'] = lat
-    session['last_lon'] = lon
-    
-    # Renderizar a página de detalhes com os dados do clima e previsão
-    return render_template('detalhes.html', 
-                          cidade=cidade, 
-                          lat=lat, 
-                          lon=lon, 
-                          clima=clima, 
-                          previsao=previsao)
 
 if __name__ == '__main__':
     app.run(debug=True) 
