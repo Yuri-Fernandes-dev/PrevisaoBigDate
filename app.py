@@ -72,7 +72,10 @@ def buscar_localizacao(nome_lugar):
     # Lista de cidades da região metropolitana do RJ que podem ser ambíguas
     cidades_rj = [
         'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
-        'Nilópolis', 'Magé', 'Itaguaí', 'Japeri', 'Queimados', 'Seropédica', 'Paracambi'
+        "Copacabana", "Ipanema", "Leblon", "Tijuca", "Rocinha", "Barra da Tijuca", 
+        "Centro", "Madureira", "Jacarepaguá", "Bangu", "Campo Grande", "Santa Cruz", 
+        "Vila Isabel", "Méier", "Botafogo", "Flamengo", "Catete", "Laranjeiras", 
+        "Lapa", "Glória", "São Cristóvão", "Engenho Novo", "Grajaú", "Andaraí", "Maracanã"
     ]
     
     # Verificar se o nome do lugar é uma das cidades que precisam de especificação
@@ -106,23 +109,49 @@ def buscar_localizacao(nome_lugar):
                 nome_lugar = f"{nome_lugar}, Brasil"
                 app.logger.info(f"Adicionado Brasil ao nome: {nome_lugar}")
                 break
+        
+        # Se não encontrou nenhuma correspondência, assume que é uma cidade brasileira
+        if ", brasil" not in nome_lugar_lower and ", brazil" not in nome_lugar_lower:
+            nome_lugar = f"{nome_lugar}, Brasil"
+            app.logger.info(f"Forçando busca no Brasil: {nome_lugar}")
     
     geolocator = Nominatim(user_agent="clima_brasil")
     
     try:
         # Primeiro tenta com o nome modificado para maior precisão
-        location = geolocator.geocode(nome_lugar, exactly_one=True)
+        location = geolocator.geocode(nome_lugar, exactly_one=True, country_codes="BR")
         
         if location:
             app.logger.info(f"Localização encontrada: {location.address}")
-            return location.latitude, location.longitude, location.address
+            # Verificar se é no Brasil (pode haver problemas com o country_codes em algumas versões)
+            if "Brasil" in location.address or "Brazil" in location.address:
+                return location.latitude, location.longitude, location.address
+            else:
+                app.logger.warning(f"Localização encontrada não é no Brasil: {location.address}")
         
         # Se não encontrar, tenta novamente forçando a busca no Brasil
         if ", brasil" not in nome_lugar_lower and "brazil" not in nome_lugar_lower:
-            location = geolocator.geocode(f"{nome_lugar}, Brasil", exactly_one=True)
-            if location:
-                app.logger.info(f"Localização encontrada com 'Brasil': {location.address}")
-                return location.latitude, location.longitude, location.address
+            location = geolocator.geocode(f"{nome_lugar}, Brasil", exactly_one=False)
+            if location and len(location) > 0:
+                # Filtrar e ordenar por relevância para Brasil
+                location_br = [loc for loc in location if "Brasil" in loc.address or "Brazil" in loc.address]
+                if location_br:
+                    best_location = location_br[0]
+                    app.logger.info(f"Localização encontrada com 'Brasil': {best_location.address}")
+                    return best_location.latitude, best_location.longitude, best_location.address
+        
+        # Tentar pesquisa mais ampla, mas filtrando pelo país
+        try:
+            # Buscar mais resultados e filtrar
+            locations = geolocator.geocode(nome_lugar, exactly_one=False)
+            if locations:
+                # Filtrar por Brasil
+                br_locations = [loc for loc in locations if "Brasil" in loc.address or "Brazil" in loc.address]
+                if br_locations:
+                    app.logger.info(f"Localização encontrada entre múltiplas opções: {br_locations[0].address}")
+                    return br_locations[0].latitude, br_locations[0].longitude, br_locations[0].address
+        except Exception as e:
+            app.logger.error(f"Erro na busca ampliada: {str(e)}")
         
         # Última tentativa: especificar ainda mais para cidades ambíguas
         for cidade in cidades_rj:
@@ -147,16 +176,27 @@ def get_weather_data(city=None, lat=None, lon=None):
         if lat_loc and lon_loc:
             lat = lat_loc
             lon = lon_loc
+            app.logger.info(f"Usando coordenadas de geocodificação: {lat}, {lon} para '{city}'")
             url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric&lang=pt_br"
         else:
-            url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric&lang=pt_br"
+            # Tenta buscar diretamente pelo nome, mas incluindo 'brasil' para maior precisão
+            if ',' not in city.lower() and ', brasil' not in city.lower() and ', brazil' not in city.lower():
+                # Adicionar Brasil à consulta para evitar ambiguidades
+                search_city = f"{city}, Brasil"
+                app.logger.info(f"Ajustando consulta para: {search_city}")
+            else:
+                search_city = city
+            
+            url = f"https://api.openweathermap.org/data/2.5/weather?q={search_city}&appid={api_key}&units=metric&lang=pt_br"
     else:
         # Default to Rio de Janeiro if no city or coordinates provided
         lat = lat if lat else -22.91
         lon = lon if lon else -43.17
+        app.logger.info(f"Usando coordenadas padrão: {lat}, {lon}")
         url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric&lang=pt_br"
     
     try:
+        app.logger.info(f"Consultando API do OpenWeatherMap: {url}")
         response = requests.get(url)
         
         if response.status_code == 200:
@@ -176,12 +216,42 @@ def get_weather_data(city=None, lat=None, lon=None):
                 'lat': data['coord']['lat'],
                 'lon': data['coord']['lon']
             }
+            
+            # Validar coordenadas retornadas
+            if city and 'brasil' in city.lower():
+                # Verificar se a cidade retornada está realmente no Brasil quando o usuário especificou Brasil
+                if weather_data['pais'] != 'BR':
+                    app.logger.warning(f"Localização retornada não é no Brasil: {weather_data['cidade']}, {weather_data['pais']}")
+                    # Tentar novamente com coordenadas da função de geocodificação
+                    lat_loc, lon_loc, address = buscar_localizacao(city)
+                    if lat_loc and lon_loc:
+                        url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat_loc}&lon={lon_loc}&appid={api_key}&units=metric&lang=pt_br"
+                        app.logger.info(f"Tentando novamente com coordenadas: {lat_loc}, {lon_loc}")
+                        response = requests.get(url)
+                        if response.status_code == 200:
+                            data = response.json()
+                            weather_data = {
+                                'cidade': formatar_nome_cidade(data['name']),
+                                'pais': data.get('sys', {}).get('country', ''),
+                                'temperatura': round(data['main']['temp']),
+                                'sensacao': round(data['main']['feels_like']),
+                                'descricao': data['weather'][0]['description'],
+                                'icone': data['weather'][0]['icon'],
+                                'vento': data['wind']['speed'],
+                                'umidade': data['main']['humidity'],
+                                'pressao': data['main']['pressure'],
+                                'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
+                                'lat': data['coord']['lat'],
+                                'lon': data['coord']['lon']
+                            }
+            
             # Adicionar temperatura máxima e mínima se disponíveis
             if 'temp_max' in data['main']:
                 weather_data['temp_max'] = round(data['main']['temp_max'])
             if 'temp_min' in data['main']:
                 weather_data['temp_min'] = round(data['main']['temp_min'])
             
+            app.logger.info(f"Dados do clima obtidos com sucesso para {weather_data['cidade']}, coordenadas: {weather_data['lat']}, {weather_data['lon']}")
             return weather_data, None
         else:
             error_msg = "Cidade não encontrada. Tente novamente."
@@ -473,106 +543,83 @@ def buscar():
 
 @app.route('/insights')
 def insights():
+    """Página de insights com informações detalhadas sobre a cidade"""
+    cidade = request.args.get('cidade', session.get('cidade', 'Rio de Janeiro'))
+    
+    app.logger.info(f"Forçando busca no Brasil: {cidade}, Brasil")
+    cidade_com_pais = f"{cidade}, Brasil"  # Forçar busca no Brasil
+    
     try:
-        # Verificar se temos uma nova busca sendo feita através de um parâmetro de URL
-        cidade_pesquisada = request.args.get('cidade', None)
-        
-        if cidade_pesquisada:
-            # Se temos uma nova pesquisa, verificar se é uma cidade do RJ que precisa de especificação
-            cidades_rj = [
-                'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
-                'Nilópolis', 'Magé', 'Itaguaí', 'Japeri', 'Queimados', 'Seropédica', 'Paracambi'
-            ]
+        # Buscar localização para obter coordenadas precisas
+        lat, lon, endereco = buscar_localizacao(cidade_com_pais)
+        if lat and lon:
+            app.logger.info(f"Coordenadas de geocodificação obtidas com sucesso: {lat}, {lon}")
             
-            cidade_lower = cidade_pesquisada.lower().strip()
-            cidade_especificada = cidade_pesquisada
-            
-            for cidade_rj in cidades_rj:
-                if cidade_rj.lower() == cidade_lower:
-                    cidade_especificada = f"{cidade_pesquisada}, Rio de Janeiro"
-                    app.logger.info(f"Especificando cidade do RJ para insights: {cidade_especificada}")
+            # Extrair estado da localização
+            estado = None
+            for estado_nome in ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
+                              'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
+                              'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
+                              'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
+                              'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins']:
+                if estado_nome in endereco:
+                    estado = estado_nome
+                    app.logger.info(f"Estado extraído da geocodificação: {estado}")
                     break
             
-            # Buscar os dados desta cidade com a especificação adequada
-            app.logger.info(f"Nova pesquisa de insights para: {cidade_especificada}")
-            weather_data, error = get_weather_data(city=cidade_especificada)
-            if not error:
-                # Armazenar na sessão apenas se não houver erro
-                session['last_city'] = weather_data['cidade']
-                session['last_lat'] = weather_data['lat']
-                session['last_lon'] = weather_data['lon']
-        else:
-            # Usar cidade da sessão ou default para Rio de Janeiro
-            cidade_pesquisada = session.get('last_city', 'Rio de Janeiro')
-            lat = session.get('last_lat', -22.91)
-            lon = session.get('last_lon', -43.17)
+            # Buscar dados do clima usando as coordenadas
+            weather_data, error = get_weather_data(lat=lat, lon=lon)
+            if error:
+                app.logger.error(f"Erro ao obter dados do clima: {error}")
+                return render_template('error.html', message="Ocorreu um erro ao buscar dados climáticos. Por favor, tente novamente mais tarde.")
             
-            if cidade_pesquisada:
-                weather_data, error = get_weather_data(city=cidade_pesquisada)
-            else:
-                weather_data, error = get_weather_data(lat=lat, lon=lon)
-        
-        if error:
-            app.logger.warning(f"Erro ao obter dados para insights: {error}. Usando cidade padrão.")
-            # Em caso de erro, usar dados padrão para Rio de Janeiro
-            weather_data = {
-                'cidade': cidade_pesquisada or 'Rio de Janeiro',
-                'pais': 'BR',
-                'temperatura': 28,
-                'sensacao': 30,
-                'descricao': 'céu limpo',
-                'icone': '01d',
-                'vento': 3.5,
-                'umidade': 70,
-                'pressao': 1012,
-                'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
-                'lat': -22.91,
-                'lon': -43.17
-            }
-        
-        # Obter dados históricos específicos da região
-        historical_data = get_historical_data(weather_data['lat'], weather_data['lon'], weather_data['cidade'])
-        
-        # Converter dados para JSON para uso nos gráficos
-        temp_data = json.dumps({
-            'labels': list(historical_data['monthly_temps'].keys()),
-            'values': list(historical_data['monthly_temps'].values())
-        })
-        
-        rainfall_data = json.dumps({
-            'labels': list(historical_data['monthly_rainfall'].keys()),
-            'values': list(historical_data['monthly_rainfall'].values())
-        })
-        
-        crop_impact_data = json.dumps(historical_data['crop_impact'])
-        
-        # Obter dados do mapa (uso da mesma função da rota do mapa)
-        try:
-            map_data = get_map_data(weather_data['cidade'], weather_data['lat'], weather_data['lon'])
-        except Exception as e:
-            app.logger.error(f"Erro ao obter dados do mapa: {e}")
-            map_data = {
-                'lat': weather_data['lat'],
-                'lon': weather_data['lon'],
-                'temperatura': weather_data['temperatura'],
-                'descricao': weather_data['descricao'],
-                'icone': weather_data['icone']
-            }
-        
-        # Obter desastres naturais ESPECIFICAMENTE para a região pesquisada
-        desastres = obter_desastres_por_regiao(weather_data['cidade'])
-        
-        return render_template(
-            'insights.html', 
-            weather=weather_data,
-            historical=historical_data,
-            temp_data=temp_data,
-            rainfall_data=rainfall_data,
-            crop_impact_data=crop_impact_data,
-            map_data=map_data,
-            desastres=desastres,
-            cidade_pesquisada=weather_data['cidade']  # Garantir que temos a cidade pesquisada
-        )
+            # Buscar dados históricos
+            historical_data = get_historical_data(lat, lon, cidade)
+            
+            # Obter dados de desastres naturais
+            cidade_com_estado = cidade
+            if estado and estado not in cidade:
+                cidade_com_estado = f"{cidade}, {estado}"
+                app.logger.info(f"Adicionando estado à consulta: {cidade_com_estado}")
+            
+            desastres = obter_desastres_por_regiao(cidade_com_estado)
+            
+            # Criar dados do mapa
+            map_data = get_map_data(cidade, lat, lon)
+            
+            # Obter previsão do tempo para os próximos dias
+            forecast_data = get_forecast_data(lat, lon)
+            
+            # Salvar na sessão
+            session['cidade'] = cidade
+            session['last_lat'] = lat
+            session['last_lon'] = lon
+            
+            # Converter dados para JSON para uso nos gráficos
+            temp_data = json.dumps({
+                'labels': list(historical_data['monthly_temps'].keys()),
+                'values': list(historical_data['monthly_temps'].values())
+            })
+            
+            rainfall_data = json.dumps({
+                'labels': list(historical_data['monthly_rainfall'].keys()),
+                'values': list(historical_data['monthly_rainfall'].values())
+            })
+            
+            crop_impact_data = json.dumps(historical_data['crop_impact'])
+            
+            return render_template('insights.html', 
+                                cidade=cidade, 
+                                weather=weather_data,
+                                historical=historical_data,
+                                temp_data=temp_data,
+                                rainfall_data=rainfall_data,
+                                crop_impact_data=crop_impact_data,
+                                map_data=map_data,
+                                desastres=desastres)
+        else:
+            app.logger.error(f"Não foi possível obter coordenadas para: {cidade}")
+            return render_template('error.html', message="Não foi possível encontrar a localização especificada. Por favor, tente novamente com outro nome de cidade.")
     except Exception as e:
         app.logger.error(f"Erro não tratado na rota insights: {e}")
         # Em caso de erro, mostrar uma mensagem de erro
@@ -621,6 +668,55 @@ def obter_desastres_por_regiao(cidade):
     """Obtém desastres naturais específicos para a região pesquisada"""
     app.logger.info(f"Buscando desastres para cidade: {cidade}")
     
+    # Extrair o estado se estiver presente na consulta
+    estado = None
+    cidade_formatada = cidade
+    if ',' in cidade:
+        partes = cidade.split(',')
+        cidade_formatada = partes[0].strip()
+        # Verificar se alguma parte é um estado
+        estados_br = ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
+                      'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
+                      'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
+                      'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
+                      'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins']
+        for parte in partes[1:]:
+            parte_formatada = parte.strip()
+            if parte_formatada in estados_br or parte_formatada.upper() in ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 
+                                                                           'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 
+                                                                           'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 
+                                                                           'RO', 'RR', 'SC', 'SP', 'SE', 'TO']:
+                estado = parte_formatada
+                app.logger.info(f"Estado identificado na consulta: {estado}")
+                break
+    
+    app.logger.info(f"Buscando desastres para: cidade='{cidade_formatada}', estado='{estado}'")
+    
+    # Verificar casos especiais de cidades que têm o mesmo nome de bairros
+    # Tratar o caso de São Cristóvão (Sergipe) vs São Cristóvão (bairro do Rio)
+    if cidade_formatada.lower() == "são cristóvão" or cidade_formatada.lower() == "sao cristovao":
+        # Se o estado for Sergipe (SE), usar dados de São Cristóvão em Sergipe
+        if estado and (estado.upper() == "SE" or estado == "Sergipe"):
+            app.logger.info(f"Caso especial: São Cristóvão, Sergipe - usando dados específicos da cidade")
+            return [
+                {
+                    'tipo': 'Inundação',
+                    'local': 'São Cristóvão, SE',
+                    'data': 'Mai/2022',
+                    'pessoas_afetadas': '3.000+',
+                    'badge_class': 'primary',
+                    'detalhes': 'Inundações na cidade histórica de São Cristóvão em Sergipe após fortes chuvas na região.'
+                },
+                {
+                    'tipo': 'Deslizamento',
+                    'local': 'Zona rural de São Cristóvão, SE',
+                    'data': 'Jun/2022',
+                    'pessoas_afetadas': '120+',
+                    'badge_class': 'danger',
+                    'detalhes': 'Deslizamentos em áreas de encosta na zona rural após período prolongado de chuvas.'
+                }
+            ]
+    
     # Primeira tentativa: buscar desastres específicos para a cidade
     desastres_por_cidade = {
         "Belford Roxo": [
@@ -647,6 +743,24 @@ def obter_desastres_por_regiao(cidade):
                 'pessoas_afetadas': '200+',
                 'badge_class': 'danger',
                 'detalhes': 'Deslizamento de terra em área de encosta, resultando em desalojamento de diversas famílias.'
+            }
+        ],
+        "São Cristóvão": [
+            {
+                'tipo': 'Inundação',
+                'local': 'São Cristóvão, SE',
+                'data': 'Mai/2022',
+                'pessoas_afetadas': '3.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Inundações na cidade histórica de São Cristóvão em Sergipe após fortes chuvas na região.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Zona rural de São Cristóvão, SE',
+                'data': 'Jun/2022',
+                'pessoas_afetadas': '120+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos em áreas de encosta na zona rural após período prolongado de chuvas.'
             }
         ],
         "Nova Iguaçu": [
@@ -807,6 +921,24 @@ def obter_desastres_por_regiao(cidade):
                 'pessoas_afetadas': '20.000+',
                 'badge_class': 'primary',
                 'detalhes': 'Alagamentos severos no centro da cidade e em bairros históricos após chuvas torrenciais.'
+            }
+        ],
+        "São Cristóvão": [
+            {
+                'tipo': 'Inundação',
+                'local': 'São Cristóvão, SE',
+                'data': 'Mai/2022',
+                'pessoas_afetadas': '3.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Inundações na cidade histórica de São Cristóvão em Sergipe após fortes chuvas na região.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Zona rural de São Cristóvão, SE',
+                'data': 'Jun/2022',
+                'pessoas_afetadas': '120+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos em áreas de encosta na zona rural após período prolongado de chuvas.'
             }
         ]
     }
@@ -1010,6 +1142,42 @@ def obter_desastres_por_regiao(cidade):
                 'badge_class': 'danger',
                 'detalhes': 'Deslizamento de terra na comunidade do Morro dos Macacos após período de chuvas.'
             }
+        ],
+        "São Cristóvão": [
+            {
+                'tipo': 'Inundação',
+                'local': 'São Cristóvão, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '6.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos nas principais vias do bairro, especialmente próximo à Quinta da Boa Vista.'
+            },
+            {
+                'tipo': 'Vendaval',
+                'local': 'São Cristóvão, Rio de Janeiro',
+                'data': 'Nov/2022',
+                'pessoas_afetadas': '1.200+',
+                'badge_class': 'warning',
+                'detalhes': 'Fortes ventos causaram queda de árvores e danos a estruturas no bairro.'
+            }
+        ],
+        "Maracanã": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Maracanã, Rio de Janeiro',
+                'data': 'Fev/2023',
+                'pessoas_afetadas': '3.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos nas ruas próximas ao Estádio do Maracanã após fortes chuvas.'
+            },
+            {
+                'tipo': 'Vendaval',
+                'local': 'Maracanã, Rio de Janeiro',
+                'data': 'Out/2022',
+                'pessoas_afetadas': '800+',
+                'badge_class': 'warning',
+                'detalhes': 'Ventos fortes causaram danos a edificações e queda de árvores no bairro.'
+            }
         ]
     }
     
@@ -1039,6 +1207,7 @@ def obter_desastres_por_regiao(cidade):
         "Engenho Novo": "Rio de Janeiro",
         "Grajaú": "Rio de Janeiro",
         "Andaraí": "Rio de Janeiro",
+        "Maracanã": "Rio de Janeiro",
         
         "Centro": "Nova Iguaçu",
         "Comendador Soares": "Nova Iguaçu",
@@ -1066,23 +1235,105 @@ def obter_desastres_por_regiao(cidade):
         "Mooca": "São Paulo"
     }
     
-    cidade_lower = cidade.lower().strip()
+    # Mapeamento de estados para suas siglas
+    estados_siglas = {
+        "Rio de Janeiro": "RJ",
+        "São Paulo": "SP",
+        "Minas Gerais": "MG",
+        "Espírito Santo": "ES",
+        "Bahia": "BA",
+        "Sergipe": "SE",
+        "Alagoas": "AL",
+        "Pernambuco": "PE",
+        "Paraíba": "PB",
+        "Rio Grande do Norte": "RN",
+        "Ceará": "CE",
+        "Piauí": "PI",
+        "Maranhão": "MA",
+        "Pará": "PA",
+        "Amapá": "AP",
+        "Amazonas": "AM",
+        "Roraima": "RR",
+        "Acre": "AC",
+        "Rondônia": "RO",
+        "Mato Grosso": "MT",
+        "Mato Grosso do Sul": "MS",
+        "Goiás": "GO",
+        "Distrito Federal": "DF",
+        "Paraná": "PR",
+        "Santa Catarina": "SC",
+        "Rio Grande do Sul": "RS",
+        "Tocantins": "TO"
+    }
     
-    # Verificar se é um bairro conhecido
+    # Converter siglas para nomes completos
+    siglas_estados = {v: k for k, v in estados_siglas.items()}
+    if estado and len(estado) == 2 and estado.upper() in siglas_estados:
+        estado = siglas_estados[estado.upper()]
+    
+    cidade_lower = cidade_formatada.lower().strip()
+    
+    # Se temos um estado especificado, priorizar a busca correta
+    if estado:
+        # Verificar se temos uma correspondência exata de cidade com o estado correto
+        for nome_cidade, desastres in desastres_por_cidade.items():
+            if nome_cidade.lower() == cidade_lower:
+                # Verificar se os desastres correspondem ao estado
+                estado_correto = False
+                for desastre in desastres:
+                    if estado in desastre['local'] or estados_siglas.get(estado, '') in desastre['local']:
+                        estado_correto = True
+                        break
+                
+                if estado_correto:
+                    app.logger.info(f"Encontrados desastres específicos para {nome_cidade} no estado {estado}")
+                    return desastres
+    
+    # Verificar se é um bairro conhecido - agora diferenciando pelo estado se disponível
     for bairro, desastres in desastres_por_bairro.items():
         if bairro.lower() == cidade_lower:
-            app.logger.info(f"Encontrados desastres específicos para o bairro {bairro}")
-            return desastres
+            # Se temos estado, verificar se corresponde
+            if estado:
+                estado_correto = False
+                for desastre in desastres:
+                    if estado in desastre['local'] or estados_siglas.get(estado, '') in desastre['local']:
+                        estado_correto = True
+                        break
+                
+                if estado_correto:
+                    app.logger.info(f"Encontrados desastres específicos para o bairro {bairro} no estado {estado}")
+                    return desastres
+            else:
+                app.logger.info(f"Encontrados desastres específicos para o bairro {bairro}")
+                return desastres
     
     # Verificar se a pesquisa contém nome de bairro conhecido
     for bairro in mapeamento_bairros.keys():
         if bairro.lower() in cidade_lower:
+            # Se temos estado, verificar primeiro a correspondência
+            cidade_do_bairro = mapeamento_bairros[bairro]
+            
+            # Se temos estado especificado, verificar se o bairro está em uma cidade desse estado
+            if estado:
+                estado_do_bairro = None
+                for estado_nome, sigla in estados_siglas.items():
+                    if estado_nome in cidade_do_bairro or sigla == estados_siglas.get(estado_nome, ''):
+                        estado_do_bairro = estado_nome
+                        break
+                
+                # Se o estado não corresponde, pular esse bairro
+                if (estado_do_bairro != estado and 
+                    estado_do_bairro != siglas_estados.get(estado.upper(), '') and 
+                    estados_siglas.get(estado, '') != siglas_estados.get(estado_do_bairro, '')):
+                    app.logger.info(f"Ignorando bairro {bairro} porque o estado especificado {estado} não corresponde ao estado {estado_do_bairro}")
+                    continue
+            
+            # Se chegou aqui, o bairro é um candidato válido
             if bairro in desastres_por_bairro:
                 app.logger.info(f"Encontrados desastres para o bairro {bairro} mencionado na pesquisa")
                 return desastres_por_bairro[bairro]
             else:
                 # Se não temos dados específicos do bairro, mas sabemos a cidade do bairro
-                cidade_do_bairro = mapeamento_bairros[bairro]
                 if cidade_do_bairro in desastres_por_cidade:
                     app.logger.info(f"Usando desastres da cidade {cidade_do_bairro} para o bairro {bairro}")
                     return desastres_por_cidade[cidade_do_bairro]
@@ -1090,6 +1341,17 @@ def obter_desastres_por_regiao(cidade):
     # Segunda verificação: nome da cidade exato
     for nome_cidade, desastres in desastres_por_cidade.items():
         if nome_cidade.lower() == cidade_lower:
+            # Se temos estado, verificar se corresponde
+            if estado:
+                estado_correto = False
+                for desastre in desastres:
+                    if estado in desastre['local'] or estados_siglas.get(estado, '') in desastre['local']:
+                        estado_correto = True
+                        break
+                
+                if not estado_correto:
+                    continue  # Pular esta cidade se o estado não corresponde
+            
             app.logger.info(f"Encontrados desastres específicos para {nome_cidade}")
             return desastres
     
@@ -1107,87 +1369,138 @@ def obter_desastres_por_regiao(cidade):
 
 @app.route('/mapa')
 def mapa():
-    try:
-        cidade = request.args.get('cidade', 'Brasília')  # Cidade padrão: Brasília
-        
-        # Adicionar verificação para cidades do RJ que precisam de especificação
-        cidades_rj = [
-            'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
-            'Nilópolis', 'Magé', 'Itaguaí', 'Japeri', 'Queimados', 'Seropédica', 'Paracambi'
-        ]
-        
-        cidade_lower = cidade.lower().strip()
-        cidade_especificada = cidade
-        
-        for cidade_rj in cidades_rj:
-            if cidade_rj.lower() == cidade_lower:
-                cidade_especificada = f"{cidade}, Rio de Janeiro"
-                app.logger.info(f"Especificando cidade do RJ: {cidade_especificada}")
-                break
-        
-        # Tentar buscar dados direto via get_weather_data para reusar o tratamento de erros
-        weather_data, error = get_weather_data(city=cidade_especificada)
-        
-        if error:
-            # Se houver erro, mostrar uma mensagem e criar dados padrão
-            app.logger.warning(f"Erro ao obter dados para mapa: {error}. Usando dados padrão.")
-            weather = {
-                'cidade': cidade,
-                'pais': 'BR',
-                'temperatura': 25,
-                'sensacao': 26,
-                'minima': 22,
-                'maxima': 28,
-                'pressao': 1013,
-                'umidade': 65,
-                'vento': 2.1,
-                'descricao': 'parcialmente nublado',
-                'icone': '03d',
-                'lat': -15.78, # Coordenadas padrão para Brasília
-                'lon': -47.93
-            }
-        else:
-            # Se não houver erro, preparar os dados para o template
-            weather = {
-                'cidade': weather_data['cidade'],
-                'pais': weather_data.get('pais', 'BR'),
-                'temperatura': weather_data['temperatura'],
-                'sensacao': weather_data.get('sensacao', weather_data['temperatura']),
-                'minima': weather_data.get('temp_min', round(weather_data['temperatura'] - 2)),
-                'maxima': weather_data.get('temp_max', round(weather_data['temperatura'] + 2)),
-                'pressao': weather_data.get('pressao', 1013),
-                'umidade': weather_data['umidade'],
-                'vento': weather_data['vento'],
-                'descricao': weather_data['descricao'],
-                'icone': weather_data['icone'],
-                'lat': weather_data['lat'],
-                'lon': weather_data['lon']
-            }
-        
-        return render_template('mapa.html', weather=weather)
+    cidade = request.args.get('cidade', 'Rio de Janeiro')
     
+    # Verificar se é uma cidade no Rio de Janeiro que precisa de especificação
+    bairros_rj = [
+        "Copacabana", "Ipanema", "Leblon", "Tijuca", "Rocinha", "Barra da Tijuca", 
+        "Centro", "Madureira", "Jacarepaguá", "Bangu", "Campo Grande", "Santa Cruz", 
+        "Vila Isabel", "Méier", "Botafogo", "Flamengo", "Catete", "Laranjeiras", 
+        "Lapa", "Glória", "São Cristóvão", "Engenho Novo", "Grajaú", "Andaraí", "Maracanã"
+    ]
+    
+    for bairro in bairros_rj:
+        if bairro.lower() in cidade.lower() and "rio de janeiro" not in cidade.lower():
+            cidade = f"{bairro}, Rio de Janeiro"
+            app.logger.info(f"Ajustando nome do bairro para incluir Rio de Janeiro: {cidade}")
+            break
+    
+    # Primeiro, obter coordenadas precisas via geocodificação
+    try:
+        app.logger.info(f"Tentando obter coordenadas precisas para: {cidade}")
+        lat, lon, endereco = buscar_localizacao(cidade)
+        if lat and lon:
+            app.logger.info(f"Coordenadas de geocodificação obtidas com sucesso: {lat}, {lon}")
+            
+            # Extrair estado da localização
+            estado = None
+            for estado_nome in ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
+                              'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
+                              'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
+                              'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
+                              'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins']:
+                if estado_nome in endereco:
+                    estado = estado_nome
+                    app.logger.info(f"Estado extraído da geocodificação: {estado}")
+                    
+                    # Se o estado não estiver já presente no nome da cidade, adicioná-lo
+                    if estado not in cidade:
+                        cidade_original = cidade.split(',')[0].strip()
+                        cidade = f"{cidade_original}, {estado}"
+                        app.logger.info(f"Adicionando estado ao nome da cidade: {cidade}")
+                    break
+            
+            # Usar as coordenadas para obter os dados do clima
+            weather_data, error = get_weather_data(lat=lat, lon=lon)
+            if error:
+                app.logger.error(f"Erro ao obter dados do clima: {error}")
+                return render_template('error.html', message="Ocorreu um erro ao buscar dados climáticos. Por favor, tente novamente mais tarde.")
+            
+            # Obter dados de desastres específicos para a região exata pesquisada
+            cidade_com_estado = cidade
+            desastres = obter_desastres_por_regiao(cidade_com_estado)
+            
+            # Estimar um raio apropriado para a região baseado no tipo
+            # Bairros terão raios menores, cidades maiores
+            if any(bairro.lower() in cidade.lower() for bairro in bairros_rj):
+                # Se for um bairro, usar um raio menor
+                raio_regiao = 1500  # 1.5 km para bairros
+            else:
+                # Para cidades, o raio depende do tamanho estimado
+                if "São Paulo" in cidade or "Rio de Janeiro" in cidade or "Belo Horizonte" in cidade:
+                    raio_regiao = 15000  # 15 km para grandes cidades
+                else:
+                    raio_regiao = 8000   # 8 km para cidades médias
+            
+            # Adicionar informações da região ao objeto de resposta
+            weather_data['regiao'] = {
+                'nome': cidade.split(',')[0].strip(),
+                'endereco_completo': endereco,
+                'raio': raio_regiao,
+                'tipo': 'bairro' if any(bairro.lower() in cidade.lower() for bairro in bairros_rj) else 'cidade'
+            }
+            
+            # Manter o nome da cidade especificado pelo usuário
+            weather_data['cidade'] = cidade.split(',')[0].strip()
+            app.logger.info(f"Dados do clima obtidos com sucesso para as coordenadas {lat}, {lon}")
+            
+            return render_template('mapa.html', cidade=cidade, weather=weather_data, desastres=desastres)
     except Exception as e:
-        # Em caso de erro inesperado, registrar e mostrar uma página com dados padrão
-        app.logger.error(f"Erro não tratado na rota do mapa: {e}")
+        app.logger.error(f"Erro ao obter dados do clima para {cidade}: {str(e)}")
+    
+    # Se falhar com geocodificação, tentar com o nome da cidade diretamente
+    try:
+        app.logger.info(f"Tentando obter dados do clima diretamente pelo nome: {cidade}")
+        weather_data, error = get_weather_data(city=cidade)
+        if error:
+            app.logger.error(f"Erro ao obter dados do clima: {error}")
+            return render_template('error.html', message="Ocorreu um erro ao buscar dados climáticos. Por favor, tente novamente mais tarde.")
         
-        # Dados padrão para Brasília
-        weather = {
-            'cidade': 'Brasília',
-            'pais': 'BR',
-            'temperatura': 25,
-            'sensacao': 26,
-            'minima': 22,
-            'maxima': 28,
-            'pressao': 1013,
-            'umidade': 65,
-            'vento': 2.1,
-            'descricao': 'parcialmente nublado',
-            'icone': '03d',
-            'lat': -15.78,
-            'lon': -47.93
+        # Obter dados de desastres específicos para a região
+        desastres = obter_desastres_por_regiao(cidade)
+        
+        # Definir um raio padrão para a região
+        raio_regiao = 5000  # 5 km como padrão
+        
+        # Adicionar informações da região
+        weather_data['regiao'] = {
+            'nome': cidade.split(',')[0].strip(),
+            'endereco_completo': cidade,
+            'raio': raio_regiao,
+            'tipo': 'cidade'
         }
         
-        return render_template('mapa.html', weather=weather)
+        app.logger.info(f"Dados do clima obtidos com sucesso pelo nome: {cidade}")
+        return render_template('mapa.html', cidade=cidade, weather=weather_data, desastres=desastres)
+    except Exception as e:
+        app.logger.error(f"Erro ao obter dados do clima pelo nome para {cidade}: {str(e)}")
+    
+    # Se tudo falhar, usar dados padrão
+    app.logger.warning(f"Usando dados padrão para {cidade}")
+    weather_data = {
+        'cidade': cidade.split(',')[0].strip(),
+        'pais': 'BR',
+        'temperatura': 25,
+        'sensacao': 25,
+        'descricao': 'céu limpo',
+        'icone': '01d',
+        'vento': 3.1,
+        'umidade': 70,
+        'pressao': 1010,
+        'lat': -22.9068,
+        'lon': -43.1729,
+        'regiao': {
+            'nome': cidade.split(',')[0].strip(),
+            'endereco_completo': cidade,
+            'raio': 5000,
+            'tipo': 'cidade'
+        }
+    }
+    
+    # Obter dados de desastres mesmo para o caso de falha
+    desastres = obter_desastres_por_regiao(cidade)
+    
+    return render_template('mapa.html', cidade=cidade, weather=weather_data, desastres=desastres)
 
 @app.route('/abrir_mapa')
 def abrir_mapa():
