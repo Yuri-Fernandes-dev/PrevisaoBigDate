@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+
+{% block title %}Detalhes do Clima - {{ cidade }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <!-- Cabeçalho com informações da cidade -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h1 class="text-center mb-3">{{ cidade }}</h1>
+            <div class="d-flex justify-content-center align-items-center gap-3">
+                <a href="/" class="btn btn-outline-primary"><i class="fas fa-arrow-left"></i> Voltar</a>
+                <a href="/mapa" class="btn btn-outline-success"><i class="fas fa-map-marked-alt"></i> Ver no Mapa</a>
+                <a href="/historico?cidade={{ cidade }}" class="btn btn-outline-info"><i class="fas fa-history"></i> Histórico</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informações do clima atual -->
+    <div class="row mb-5">
+        <div class="col-md-12">
+            <div class="card shadow-lg">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 d-flex flex-column align-items-center justify-content-center">
+                            <img src="https://openweathermap.org/img/wn/{{ clima.icone }}@4x.png" alt="{{ clima.descricao }}" class="img-fluid mb-2" style="width: 150px;">
+                            <h2 class="mb-0">{{ clima.temperatura }}°C</h2>
+                            <p class="text-capitalize">{{ clima.descricao }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="card bg-light">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-temperature-high text-danger mb-2" style="font-size: 1.5rem;"></i>
+                                            <h5 class="card-title">Máxima</h5>
+                                            <p class="card-text">{{ clima.temp_max }}°C</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card bg-light">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-temperature-low text-primary mb-2" style="font-size: 1.5rem;"></i>
+                                            <h5 class="card-title">Mínima</h5>
+                                            <p class="card-text">{{ clima.temp_min }}°C</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card bg-light">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-tint text-info mb-2" style="font-size: 1.5rem;"></i>
+                                            <h5 class="card-title">Umidade</h5>
+                                            <p class="card-text">{{ clima.umidade }}%</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card bg-light">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-wind text-secondary mb-2" style="font-size: 1.5rem;"></i>
+                                            <h5 class="card-title">Vento</h5>
+                                            <p class="card-text">{{ clima.velocidade_vento }} km/h</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Previsão para os próximos dias -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2 class="mb-4">Previsão para os próximos dias</h2>
+            <div class="row">
+                {% for dia in previsao %}
+                <div class="col-md-4 col-lg mb-3">
+                    <div class="card h-100 forecast-card shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">{{ dia.dia_semana }}</h5>
+                            <h6 class="text-muted">{{ dia.data }}</h6>
+                            <img src="https://openweathermap.org/img/wn/{{ dia.icone }}@2x.png" alt="{{ dia.descricao }}" class="my-2">
+                            <p class="text-capitalize">{{ dia.descricao }}</p>
+                            <div class="d-flex justify-content-around">
+                                <span class="text-danger"><i class="fas fa-temperature-high"></i> {{ dia.temp_max }}°C</span>
+                                <span class="text-primary"><i class="fas fa-temperature-low"></i> {{ dia.temp_min }}°C</span>
+                            </div>
+                            <div class="mt-2 d-flex justify-content-around">
+                                <span><i class="fas fa-tint text-info"></i> {{ dia.umidade }}%</span>
+                                <span><i class="fas fa-wind text-secondary"></i> {{ dia.vento }} km/h</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Informações adicionais -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h4 class="card-title">Informações adicionais</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>Latitude:</span>
+                                    <span>{{ lat }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>Longitude:</span>
+                                    <span>{{ lon }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>Pressão Atmosférica:</span>
+                                    <span>{{ clima.pressao }} hPa</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>Nascer do Sol:</span>
+                                    <span>{{ clima.nascer_do_sol }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>Pôr do Sol:</span>
+                                    <span>{{ clima.por_do_sol }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span>Visibilidade:</span>
+                                    <span>{{ clima.visibilidade }} km</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .forecast-card {
+        transition: transform 0.3s ease;
+    }
+    .forecast-card:hover {
+        transform: translateY(-5px);
+    }
+</style>
+{% endblock %} 

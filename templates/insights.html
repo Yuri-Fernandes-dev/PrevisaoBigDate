@@ -10,10 +10,61 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Styles for disaster stat cards */
+        .disaster-stat-card {
+            width: 120px;
+            padding: 15px 10px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            background-color: white;
+            transition: all 0.3s ease;
+        }
+        
+        .disaster-stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .icon-container {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+        }
+        
+        .primary-light {
+            background-color: rgba(13, 110, 253, 0.15);
+        }
+        
+        .danger-light {
+            background-color: rgba(220, 53, 69, 0.15);
+        }
+        
+        .warning-light {
+            background-color: rgba(255, 193, 7, 0.15);
+        }
+        
+        .stat-count {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #6c757d;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -32,18 +83,8 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('mapa') }}">
-                                <i class="fas fa-map-marked-alt me-2"></i>Visualizar Mapa
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('desastres_naturais') }}">
-                                <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('sobre') }}">
-                                <i class="fas fa-users me-2"></i>Sobre
+                            <a class="nav-link" href="{{ url_for('turma') }}">
+                                <i class="fas fa-users me-2"></i>Turma
                             </a>
                         </li>
                     </ul>
@@ -52,6 +93,84 @@
                 <h1 class="text-center text-white mb-4">
                     <i class="fas fa-chart-bar me-2"></i>Insights Climáticos: {{ weather.cidade }}
                 </h1>
+                
+                <!-- Formulário de pesquisa de cidade -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-body">
+                        <form action="{{ url_for('insights') }}" method="GET" class="d-flex">
+                            <input type="text" name="cidade" class="form-control me-2" placeholder="Digite o nome da cidade..." value="{{ cidade_pesquisada }}" required>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Pesquisar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Mapa Climático -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="text-center mb-0">
+                            <i class="fas fa-map-marked-alt me-2"></i>Mapa Climático
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <!-- Informações básicas do clima -->
+                        <div class="row align-items-center mb-4">
+                            <div class="col-md-6 text-center mb-3 mb-md-0">
+                                <img src="https://openweathermap.org/img/wn/{{ map_data.icone }}@4x.png" alt="{{ map_data.descricao }}" class="weather-icon" style="width: 120px;">
+                                <h4 class="mt-2 text-capitalize">{{ map_data.descricao }}</h4>
+                                <h2>{{ map_data.temperatura }}°C</h2>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="weather-details">
+                                    <p><i class="fas fa-map-pin me-2"></i> Coordenadas: {{ map_data.lat }}, {{ map_data.lon }}</p>
+                                    {% if map_data.umidade %}
+                                    <p><i class="fas fa-tint me-2"></i> Umidade: {{ map_data.umidade }}%</p>
+                                    {% endif %}
+                                    {% if map_data.vento %}
+                                    <p><i class="fas fa-wind me-2"></i> Vento: {{ map_data.vento }} m/s</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Container do Mapa -->
+                        <div class="map-container">
+                            <div id="map" style="height: 400px; width: 100%; border-radius: 10px; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);"></div>
+                            <div id="error-message" class="alert alert-warning mt-2" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i> 
+                                Não foi possível carregar o mapa completo.
+                            </div>
+                            
+                            <!-- Legenda de Temperatura -->
+                            <div class="legend" id="temp-legend" style="padding: 10px; background: white; box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; margin: 10px; line-height: 24px; max-width: 240px; position: absolute; bottom: 30px; right: 10px; z-index: 1000; display: none;">
+                                <h6 style="margin: 0 0 10px 0; font-weight: bold;">Temperatura</h6>
+                                <div class="legend-content">
+                                    <!-- Será preenchido via JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Controles do Mapa -->
+                        <div class="row mt-3 mb-3">
+                            <div class="col-md-12">
+                                <div class="btn-group d-flex" role="group">
+                                    <button type="button" class="btn btn-outline-primary active" id="btn-mapa-streets"><i class="fas fa-road"></i> Ruas</button>
+                                    <button type="button" class="btn btn-outline-info" id="btn-mapa-temp"><i class="fas fa-temperature-high"></i> Temperatura</button>
+                                    <button type="button" class="btn btn-outline-secondary" id="btn-mapa-satellite"><i class="fas fa-satellite"></i> Satélite</button>
+                                    <button type="button" class="btn btn-outline-dark" id="btn-mapa-dark"><i class="fas fa-moon"></i> Noturno</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Link para Google Maps -->
+                        <div class="text-center">
+                            <a href="https://www.google.com/maps/@{{ map_data.lat }},{{ map_data.lon }},13z" target="_blank" class="btn btn-outline-primary">
+                                <i class="fab fa-google me-2"></i>Ver no Google Maps
+                            </a>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Padrões Sazonais -->
                 <div class="card shadow-lg mb-4">
@@ -151,6 +270,80 @@
                     </div>
                 </div>
                 
+                <!-- Histórico de Eventos em {{ weather.cidade }} -->
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="text-center mb-0">
+                            <i class="fas fa-history me-2"></i>Histórico de Eventos em {{ weather.cidade }}
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        {% if historical.city_historical_events %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Ano</th>
+                                        <th>Evento</th>
+                                        <th>Detalhes</th>
+                                        <th>Nível de Impacto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for event in historical.city_historical_events %}
+                                    <tr>
+                                        <td>{{ event.ano }}</td>
+                                        <td>{{ event.evento }}</td>
+                                        <td>
+                                            {% if event.temperatura %}
+                                                {{ event.temperatura }}°C
+                                            {% elif event.precipitacao %}
+                                                {{ event.precipitacao }}mm
+                                            {% elif event.duracao %}
+                                                {{ event.duracao }}
+                                            {% elif event.nivel_agua %}
+                                                {{ event.nivel_agua }}
+                                            {% elif event.vitimas %}
+                                                {{ event.vitimas }} vítimas
+                                            {% elif event.danos %}
+                                                {{ event.danos }}
+                                            {% elif event.nivel %}
+                                                {{ event.nivel }}
+                                            {% elif event.detalhe %}
+                                                {{ event.detalhe }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge {% if event.impacto == 'Severo' %}bg-danger{% elif event.impacto == 'Alto' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                                                {{ event.impacto }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="insight-box p-3 bg-light rounded border-primary">
+                                    <h5 class="text-primary"><i class="fas fa-lightbulb me-2"></i>Informações Históricas:</h5>
+                                    <ul>
+                                        <li>Os dados históricos para {{ weather.cidade }} mostram padrões climáticos recorrentes ao longo dos anos.</li>
+                                        <li>Eventos de grande impacto têm afetado a infraestrutura e população local de forma significativa.</li>
+                                        <li>Medidas preventivas específicas para os tipos de eventos mais comuns podem reduzir danos futuros.</li>
+                                        <li>A análise destes dados ajuda no planejamento urbano e estratégias de resposta a desastres.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i> Não existem dados históricos específicos registrados para {{ weather.cidade }}. Estamos trabalhando para expandir nossa base de dados.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
                 <!-- Impacto na Agricultura -->
                 <div class="card shadow-lg mb-4">
                     <div class="card-header bg-success text-white">
@@ -174,8 +367,8 @@
                                     <ul>
                                         <li>O milho apresenta a maior vulnerabilidade a secas prolongadas, com potencial redução de até 40% na produtividade.</li>
                                         <li>A cana-de-açúcar demonstra maior resiliência a temperaturas elevadas, mas sofre impacto significativo com a seca.</li>
-                                        <li>Períodos de chuva intensa impactam mais significativamente a produção de soja.</li>
-                                        <li>Recomenda-se diversificação de culturas e implementação de técnicas de irrigação eficiente para mitigar riscos.</li>
+                                        <li>Culturas como banana e arroz são as mais afetadas por chuvas intensas, exigindo atenção especial durante períodos chuvosos.</li>
+                                        <li>Diversificação de culturas pode ser uma estratégia eficaz para reduzir o impacto geral das mudanças climáticas na região.</li>
                                     </ul>
                                 </div>
                             </div>
@@ -183,48 +376,147 @@
                     </div>
                 </div>
                 
-                <!-- Recomendações -->
+                <!-- Desastres Naturais na Região -->
                 <div class="card shadow-lg mb-4">
-                    <div class="card-header bg-info text-white">
+                    <div class="card-header bg-warning text-dark">
                         <h2 class="text-center mb-0">
-                            <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
+                            <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais na Região
                         </h2>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <div class="card h-100 border-primary">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-water fa-3x text-primary mb-3"></i>
-                                        <h5 class="card-title">Inundações</h5>
-                                        <p class="card-text">Monitoramento e análise de inundações e enchentes em diversas regiões do Brasil.</p>
+                        <!-- Desktop version (hidden on small screens) -->
+                        <div class="table-responsive d-none d-md-block">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Local</th>
+                                        <th>Data</th>
+                                        <th>Pessoas Afetadas</th>
+                                        <th>Detalhes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for desastre in desastres %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-{{ desastre.badge_class }}">{{ desastre.tipo }}</span>
+                                        </td>
+                                        <td>{{ desastre.local }}</td>
+                                        <td>{{ desastre.data }}</td>
+                                        <td>{{ desastre.pessoas_afetadas }}</td>
+                                        <td>{{ desastre.detalhes }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Mobile version (visible only on small screens) -->
+                        <div class="d-md-none">
+                            <div class="accordion" id="accordionDesastres">
+                                {% for desastre in desastres %}
+                                <div class="accordion-item mb-2 border">
+                                    <h2 class="accordion-header" id="heading{{ loop.index }}">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="false" aria-controls="collapse{{ loop.index }}">
+                                            <span class="badge bg-{{ desastre.badge_class }} me-2">{{ desastre.tipo }}</span>
+                                            <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ desastre.local }}</span>
+                                        </button>
+                                    </h2>
+                                    <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#accordionDesastres">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-5 fw-bold">Local:</div>
+                                                <div class="col-7">{{ desastre.local }}</div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-5 fw-bold">Data:</div>
+                                                <div class="col-7">{{ desastre.data }}</div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-5 fw-bold">Afetados:</div>
+                                                <div class="col-7">{{ desastre.pessoas_afetadas }}</div>
+                                            </div>
+                                            <div class="row mt-2">
+                                                <div class="col-12 fw-bold">Detalhes:</div>
+                                                <div class="col-12">{{ desastre.detalhes }}</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
+                                {% endfor %}
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <div class="card h-100 border-danger">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-mountain fa-3x text-danger mb-3"></i>
-                                        <h5 class="card-title">Deslizamentos</h5>
-                                        <p class="card-text">Incidência de deslizamentos de terra e áreas de risco monitoradas pelo IBGE.</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <div class="card h-100 border-warning">
-                                    <div class="card-body text-center">
-                                        <i class="fas fa-sun fa-3x text-warning mb-3"></i>
-                                        <h5 class="card-title">Secas</h5>
-                                        <p class="card-text">Períodos de estiagem e impacto das secas nas diferentes regiões brasileiras.</p>
-                                    </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="insight-box p-3 bg-light rounded">
+                                    <h5 class="text-warning"><i class="fas fa-lightbulb me-2"></i>Análise de Desastres Naturais:</h5>
+                                    <ul>
+                                        <li>Esta região apresenta histórico de eventos climáticos extremos que causaram impactos significativos na população e infraestrutura.</li>
+                                        <li>Os dados mostram padrões recorrentes de desastres, indicando áreas de vulnerabilidade que precisam de atenção especial.</li>
+                                        <li>As informações históricas permitem o desenvolvimento de melhores estratégias de prevenção e mitigação de riscos.</li>
+                                        <li>O conhecimento destes padrões pode auxiliar no planejamento urbano e nas políticas públicas para redução de danos.</li>
+                                    </ul>
                                 </div>
                             </div>
                         </div>
-                        <div class="text-center mt-4">
-                            <p class="lead">Acesse nossa página de desastres naturais para informações detalhadas sobre ocorrências, impactos e medidas preventivas.</p>
-                            <a href="{{ url_for('desastres_naturais') }}" class="btn btn-danger btn-lg">
-                                <i class="fas fa-exclamation-triangle me-2"></i>Ver Desastres Naturais
-                            </a>
+                        
+                        <!-- Visual summary of disaster types -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <h5 class="text-center mb-3">Visão Geral de Ocorrências</h5>
+                                <div class="d-flex flex-wrap justify-content-center">
+                                    {% set inundacao_count = namespace(value=0) %}
+                                    {% set deslizamento_count = namespace(value=0) %}
+                                    {% set seca_count = namespace(value=0) %}
+                                    {% set incendio_count = namespace(value=0) %}
+                                    
+                                    {% for desastre in desastres %}
+                                        {% if 'inundação' in desastre.tipo.lower() or 'enchente' in desastre.tipo.lower() %}
+                                            {% set inundacao_count.value = inundacao_count.value + 1 %}
+                                        {% elif 'deslizamento' in desastre.tipo.lower() %}
+                                            {% set deslizamento_count.value = deslizamento_count.value + 1 %}
+                                        {% elif 'seca' in desastre.tipo.lower() or 'estiagem' in desastre.tipo.lower() %}
+                                            {% set seca_count.value = seca_count.value + 1 %}
+                                        {% elif 'incêndio' in desastre.tipo.lower() or 'queimada' in desastre.tipo.lower() %}
+                                            {% set incendio_count.value = incendio_count.value + 1 %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    
+                                    <div class="disaster-stat-card me-3 mb-3 text-center">
+                                        <div class="icon-container primary-light">
+                                            <i class="fas fa-water fa-2x text-primary"></i>
+                                        </div>
+                                        <div class="stat-count">{{ inundacao_count.value }}</div>
+                                        <div class="stat-label">Inundações</div>
+                                    </div>
+                                    
+                                    <div class="disaster-stat-card me-3 mb-3 text-center">
+                                        <div class="icon-container danger-light">
+                                            <i class="fas fa-mountain fa-2x text-danger"></i>
+                                        </div>
+                                        <div class="stat-count">{{ deslizamento_count.value }}</div>
+                                        <div class="stat-label">Deslizamentos</div>
+                                    </div>
+                                    
+                                    <div class="disaster-stat-card me-3 mb-3 text-center">
+                                        <div class="icon-container warning-light">
+                                            <i class="fas fa-sun fa-2x text-warning"></i>
+                                        </div>
+                                        <div class="stat-count">{{ seca_count.value }}</div>
+                                        <div class="stat-label">Secas</div>
+                                    </div>
+                                    
+                                    <div class="disaster-stat-card mb-3 text-center">
+                                        <div class="icon-container danger-light">
+                                            <i class="fas fa-fire fa-2x text-danger"></i>
+                                        </div>
+                                        <div class="stat-count">{{ incendio_count.value }}</div>
+                                        <div class="stat-label">Incêndios</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -246,8 +538,16 @@
     <!-- Charts Scripts -->
     <script>
         // Dados de temperatura
-        const tempData = {{ temp_data|safe }};
-        const rainfallData = {{ rainfall_data|safe }};
+        const tempData = {
+            labels: {{ temp_data|safe }}.labels,
+            values: {{ temp_data|safe }}.values
+        };
+        
+        const rainfallData = {
+            labels: {{ rainfall_data|safe }}.labels,
+            values: {{ rainfall_data|safe }}.values
+        };
+        
         const cropImpactData = {{ crop_impact_data|safe }};
         
         // Temperatura Chart
@@ -376,6 +676,336 @@
                         }
                     }
                 }
+            }
+        });
+    </script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Script do mapa -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Coordenadas da localização
+            var lat = parseFloat('{{ map_data.lat }}');
+            var lon = parseFloat('{{ map_data.lon }}');
+            var cidade = "{{ map_data.cidade }}";
+            var temperatura = parseInt('{{ map_data.temperatura }}');
+            var descricao = "{{ map_data.descricao }}";
+            var icone = "{{ map_data.icone }}";
+            
+            // Esconder legenda inicialmente
+            document.getElementById('temp-legend').style.display = 'none';
+            
+            try {
+                // Inicializar o mapa com Leaflet com zoom mais aproximado para melhor qualidade
+                var map = L.map('map', {
+                    zoomControl: true,
+                    maxZoom: 19,
+                    minZoom: 3
+                }).setView([lat, lon], 11);
+                
+                // Camada de mapa base - OpenStreetMap com melhor resolução
+                var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">HOT</a>',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                // Camada de satélite - ESRI com melhor qualidade
+                var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                    maxZoom: 19
+                });
+                
+                // Camada de mapa escuro - CartoDB com melhor qualidade
+                var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    maxZoom: 19
+                });
+                
+                // Camada topográfica para melhor visualização do terreno
+                var topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
+                    maxZoom: 17
+                });
+                
+                // Adicionar botão para o mapa topográfico
+                var topoButton = document.createElement('button');
+                topoButton.type = 'button';
+                topoButton.className = 'btn btn-outline-success';
+                topoButton.id = 'btn-mapa-topo';
+                topoButton.innerHTML = '<i class="fas fa-mountain"></i> Topográfico';
+                document.querySelector('.btn-group').appendChild(topoButton);
+                
+                // Criar ícone personalizado para o marcador principal
+                var weatherIcon = L.icon({
+                    iconUrl: 'https://openweathermap.org/img/wn/' + icone + '@2x.png',
+                    iconSize: [60, 60],
+                    iconAnchor: [30, 30],
+                    popupAnchor: [0, -30],
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                    shadowSize: [41, 41],
+                    shadowAnchor: [12, 41]
+                });
+                
+                // Adicionar um círculo para destacar a região pesquisada
+                var regionCircle = L.circle([lat, lon], {
+                    color: '#3388ff',
+                    fillColor: '#3388ff',
+                    fillOpacity: 0.2,
+                    weight: 3,
+                    radius: 3000  // Reduzindo de 10km para 3km para limitar apenas à cidade
+                }).addTo(map);
+                
+                // Adicionar marcador principal
+                var marker = L.marker([lat, lon], {icon: weatherIcon}).addTo(map);
+                marker.bindPopup(
+                    '<div class="weather-popup" style="text-align:center;">' +
+                    '<h5>' + cidade + '</h5>' +
+                    '<img src="https://openweathermap.org/img/wn/' + icone + '@2x.png" alt="' + descricao + '" style="width:60px;height:60px;">' +
+                    '<p style="font-size: 18px; font-weight: bold;">' + temperatura + '°C</p>' +
+                    '<p class="text-capitalize" style="margin-top:-5px;">' + descricao + '</p>' +
+                    '</div>'
+                ).openPopup();
+                
+                // Criar pontos de temperatura ao redor com um padrão mais realista
+                var tempPoints = [];
+                var tempCircles = [];
+                
+                // Gerar pontos de temperatura com alguma variação ao redor da localização principal
+                function generateTempPoints() {
+                    tempPoints = [];
+                    tempCircles = [];
+                    var numPoints = 10;  // Mais pontos para melhor visualização
+                    var radius = 0.15;   // Graus de latitude/longitude
+                    
+                    // Criar pontos em anéis concêntricos para um padrão mais realista
+                    for (var ring = 1; ring <= 3; ring++) {
+                        var ringPoints = 8;
+                        var ringRadius = radius * ring;
+                        
+                        for (var i = 0; i < ringPoints; i++) {
+                            var angle = (i / ringPoints) * Math.PI * 2;
+                            var distance = ringRadius * (0.8 + Math.random() * 0.4); // Adicionar variação ao raio
+                            var tempLat = lat + distance * Math.cos(angle);
+                            var tempLon = lon + distance * Math.sin(angle);
+                            
+                            // Variação da temperatura baseada na distância e um fator aleatório
+                            // Usa distância para criar um gradiente realista
+                            var distanceFactor = distance / (radius * 3);
+                            var randFactor = Math.random() * 2 - 1;
+                            var tempVariation = Math.floor((distanceFactor * 6 + randFactor * 2));
+                            var pointTemp = temperatura + tempVariation;
+                            
+                            tempPoints.push({
+                                lat: tempLat,
+                                lon: tempLon,
+                                temp: pointTemp,
+                                radius: 400 + Math.random() * 300
+                            });
+                        }
+                    }
+                }
+                
+                // Mapear temperatura para cor
+                function getTempColor(temp) {
+                    if (temp <= 0) return '#9EC5FE'; // Azul claro para muito frio
+                    if (temp <= 5) return '#6EA8FE'; // Azul para frio
+                    if (temp <= 10) return '#3F8BFE'; // Azul mais escuro
+                    if (temp <= 15) return '#98EECC'; // Verde claro
+                    if (temp <= 20) return '#79E0A9'; // Verde
+                    if (temp <= 25) return '#FEE440'; // Amarelo
+                    if (temp <= 30) return '#FDAC42'; // Laranja
+                    if (temp <= 35) return '#FD8A42'; // Laranja escuro
+                    return '#F94144';                 // Vermelho para muito quente
+                }
+                
+                // Mostrar pontos de temperatura
+                function showTempPoints() {
+                    // Limpar pontos anteriores
+                    tempCircles.forEach(circle => map.removeLayer(circle));
+                    tempCircles = [];
+                    
+                    // Gerar novos pontos
+                    generateTempPoints();
+                    
+                    // Primeiro adicionar círculos coloridos como áreas de temperatura
+                    tempPoints.forEach(point => {
+                        var color = getTempColor(point.temp);
+                        
+                        // Adicionar círculo para mostrar a área de temperatura
+                        var circle = L.circle([point.lat, point.lon], {
+                            color: color,
+                            fillColor: color,
+                            fillOpacity: 0.3,
+                            weight: 1,
+                            radius: point.radius
+                        }).addTo(map);
+                        
+                        tempCircles.push(circle);
+                    });
+                    
+                    // Depois adicionar marcadores com os valores de temperatura
+                    tempPoints.forEach(point => {
+                        var color = getTempColor(point.temp);
+                        
+                        // Criar marcador com estilo personalizado
+                        var tempMarker = L.divIcon({
+                            className: 'temp-marker',
+                            html: '<div style="background-color:' + color + '; width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:50%; color:white; font-weight:bold; border:2px solid white; box-shadow:0 0 10px rgba(0,0,0,0.4);">' + point.temp + '°</div>',
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 18]
+                        });
+                        
+                        var marker = L.marker([point.lat, point.lon], {icon: tempMarker}).addTo(map);
+                        marker.bindPopup('Temperatura: ' + point.temp + '°C');
+                        tempCircles.push(marker);
+                    });
+                }
+                
+                // Criar legenda de temperatura
+                function createTempLegend() {
+                    var temps = [0, 5, 10, 15, 20, 25, 30, 35, 40];
+                    var legendContent = document.querySelector('.legend-content');
+                    legendContent.innerHTML = '';
+                    
+                    temps.forEach(function(temp, index) {
+                        if (index < temps.length - 1) {
+                            var color = getTempColor(temp);
+                            var item = document.createElement('div');
+                            item.className = 'legend-item';
+                            item.style.display = 'flex';
+                            item.style.alignItems = 'center';
+                            item.style.marginBottom = '6px';
+                            
+                            var colorDiv = document.createElement('div');
+                            colorDiv.className = 'legend-color';
+                            colorDiv.style.width = '18px';
+                            colorDiv.style.height = '18px';
+                            colorDiv.style.marginRight = '8px';
+                            colorDiv.style.borderRadius = '50%';
+                            colorDiv.style.backgroundColor = color;
+                            
+                            var textDiv = document.createElement('span');
+                            textDiv.textContent = temp + '°C - ' + temps[index + 1] + '°C';
+                            
+                            item.appendChild(colorDiv);
+                            item.appendChild(textDiv);
+                            legendContent.appendChild(item);
+                        }
+                    });
+                }
+                
+                // Botões para alternar entre diferentes mapas
+                document.getElementById('btn-mapa-streets').addEventListener('click', function() {
+                    map.removeLayer(satelliteLayer);
+                    map.removeLayer(darkLayer);
+                    map.removeLayer(topoLayer);
+                    osmLayer.addTo(map);
+                    
+                    // Remover todos os círculos de temperatura
+                    tempCircles.forEach(circle => map.removeLayer(circle));
+                    document.getElementById('temp-legend').style.display = 'none';
+                    
+                    // Atualizar estado dos botões
+                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Garantir que o círculo da região fique visível
+                    if (!map.hasLayer(regionCircle)) {
+                        regionCircle.addTo(map);
+                    }
+                });
+                
+                document.getElementById('btn-mapa-satellite').addEventListener('click', function() {
+                    map.removeLayer(osmLayer);
+                    map.removeLayer(darkLayer);
+                    map.removeLayer(topoLayer);
+                    satelliteLayer.addTo(map);
+                    
+                    // Remover todos os círculos de temperatura
+                    tempCircles.forEach(circle => map.removeLayer(circle));
+                    document.getElementById('temp-legend').style.display = 'none';
+                    
+                    // Atualizar estado dos botões
+                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Garantir que o círculo da região fique visível
+                    if (!map.hasLayer(regionCircle)) {
+                        regionCircle.addTo(map);
+                    }
+                });
+                
+                document.getElementById('btn-mapa-dark').addEventListener('click', function() {
+                    map.removeLayer(osmLayer);
+                    map.removeLayer(satelliteLayer);
+                    map.removeLayer(topoLayer);
+                    darkLayer.addTo(map);
+                    
+                    // Remover todos os círculos de temperatura
+                    tempCircles.forEach(circle => map.removeLayer(circle));
+                    document.getElementById('temp-legend').style.display = 'none';
+                    
+                    // Atualizar estado dos botões
+                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Garantir que o círculo da região fique visível
+                    if (!map.hasLayer(regionCircle)) {
+                        regionCircle.addTo(map);
+                    }
+                });
+                
+                document.getElementById('btn-mapa-topo').addEventListener('click', function() {
+                    map.removeLayer(osmLayer);
+                    map.removeLayer(satelliteLayer);
+                    map.removeLayer(darkLayer);
+                    topoLayer.addTo(map);
+                    
+                    // Remover todos os círculos de temperatura
+                    tempCircles.forEach(circle => map.removeLayer(circle));
+                    document.getElementById('temp-legend').style.display = 'none';
+                    
+                    // Atualizar estado dos botões
+                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Garantir que o círculo da região fique visível
+                    if (!map.hasLayer(regionCircle)) {
+                        regionCircle.addTo(map);
+                    }
+                });
+                
+                document.getElementById('btn-mapa-temp').addEventListener('click', function() {
+                    // Garantir que temos uma camada base
+                    if (!map.hasLayer(osmLayer) && !map.hasLayer(satelliteLayer) && !map.hasLayer(darkLayer) && !map.hasLayer(topoLayer)) {
+                        osmLayer.addTo(map);
+                    }
+                    
+                    // Mostrar pontos de temperatura
+                    showTempPoints();
+                    
+                    // Criar e mostrar legenda
+                    createTempLegend();
+                    document.getElementById('temp-legend').style.display = 'block';
+                    
+                    // Atualizar estado dos botões
+                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                });
+                
+                // Adicionar controle de escala
+                L.control.scale({
+                    imperial: false,
+                    metric: true,
+                    position: 'bottomleft'
+                }).addTo(map);
+                
+            } catch (error) {
+                console.error("Erro ao inicializar o mapa:", error);
+                document.getElementById('map').style.display = 'none';
+                document.getElementById('error-message').style.display = 'block';
             }
         });
     </script>

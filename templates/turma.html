@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nossa Equipe - Análise e Desenvolvimento de Sistemas</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <!-- AOS Animation Library -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            min-height: 100vh;
+        }
+        
+        .main-container {
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            position: relative;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .team-card {
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            transition: all 0.4s ease;
+            background: linear-gradient(145deg, #ffffff, #f5f7fa);
+            height: 100%;
+        }
+        
+        .team-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+        
+        .team-image {
+            height: 180px;
+            background: linear-gradient(135deg, #4a87e8, #6c5ce7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .student-photo {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 5px solid #fff;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .team-content {
+            padding: 20px;
+        }
+        
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .social-links a {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .social-links a.github {
+            background-color: #24292e;
+            color: white;
+        }
+        
+        .social-links a.linkedin {
+            background-color: #0077b5;
+            color: white;
+        }
+        
+        .social-links a:hover {
+            transform: scale(1.1);
+        }
+        
+        .role-badge {
+            background-color: #4c6ef5;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        
+        .university-logo {
+            max-height: 150px;
+            max-width: 90%;
+            margin: 15px 0;
+        }
+        
+        .header-section {
+            position: relative;
+            padding: 30px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            background-color: #4a87e8;
+            border-radius: 15px;
+        }
+        
+        .page-title {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+        
+        .page-title:after {
+            content: '';
+            position: absolute;
+            width: 50%;
+            height: 4px;
+            background: #ffffff;
+            bottom: -10px;
+            left: 25%;
+            border-radius: 2px;
+        }
+        
+        .tech-icon {
+            transition: all 0.3s;
+        }
+        
+        .tech-icon:hover {
+            transform: scale(1.2);
+        }
+        
+        .nav-pills {
+            background: #ffffff;
+        }
+        
+        .lead {
+            color: #ffffff;
+        }
+        
+        .footer-text {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-10 col-lg-10 main-container">
+                <nav class="mb-4">
+                    <ul class="nav nav-pills nav-fill rounded-pill shadow-sm p-2">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('index') }}">
+                                <i class="fas fa-home me-2"></i>Página Inicial
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('insights') }}">
+                                <i class="fas fa-chart-line me-2"></i>Insights Climáticos
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('turma') }}">
+                                <i class="fas fa-graduation-cap me-2"></i>Nossa Turma
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                
+                <div class="header-section" data-aos="fade-up">
+                    <h1 class="text-center page-title">
+                        <i class="fas fa-graduation-cap me-2"></i>Nossa Equipe
+                    </h1>
+                    <div class="text-center">
+                        <img src="{{ url_for('static', filename='logo_estacio.png') }}" alt="Logo da Estácio" class="university-logo">
+                        <p class="lead">Análise e Desenvolvimento de Sistemas – Projeto Big Data</p>
+                    </div>
+                </div>
+                
+                <!-- Team Members Cards -->
+                <div class="row g-4">
+                    {% for aluno in alunos %}
+                    <div class="col-md-6 col-lg-3 mb-4" data-aos="zoom-in" data-aos-delay="{{ loop.index * 100 }}">
+                        <div class="team-card">
+                            <div class="team-image">
+                                <img src="{{ url_for('static', filename='img/profile-placeholder.jpg') }}" alt="{{ aluno.nome }}" class="student-photo">
+                            </div>
+                            <div class="team-content text-center">
+                                {% if aluno.nome == "Yuri Fernandes de Oliveira" %}
+                                <span class="role-badge">Desenvolvedor Full Stack</span>
+                                {% else %}
+                                <span class="role-badge">{{ aluno.papel }}</span>
+                                {% endif %}
+                                <h4>{{ aluno.nome }}</h4>
+                                <div class="social-links">
+                                    <a href="https://github.com/Yuri-Fernandes-dev/PrevisaoBigDate.git" class="github" target="_blank" title="GitHub">
+                                        <i class="fab fa-github"></i>
+                                    </a>
+                                    <a href="{{ aluno.linkedin }}" class="linkedin" target="_blank" title="LinkedIn">
+                                        <i class="fab fa-linkedin-in"></i>
+                                    </a>
+                                    <a href="https://yurioliveira.netlify.app/" class="bg-info" target="_blank" title="Portfólio">
+                                        <i class="fas fa-globe"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Technologies Used -->
+                <div class="card shadow-lg mt-5 mb-4" data-aos="fade-up">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="text-center mb-0">
+                            <i class="fas fa-laptop-code me-2"></i>Tecnologias Utilizadas
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mt-3 text-center">
+                            <div class="col-4 col-md-2 mb-3">
+                                <i class="fab fa-python fa-3x text-primary tech-icon"></i>
+                                <p>Python</p>
+                            </div>
+                            <div class="col-4 col-md-2 mb-3">
+                                <i class="fab fa-html5 fa-3x text-danger tech-icon"></i>
+                                <p>HTML5</p>
+                            </div>
+                            <div class="col-4 col-md-2 mb-3">
+                                <i class="fab fa-css3-alt fa-3x text-info tech-icon"></i>
+                                <p>CSS3</p>
+                            </div>
+                            <div class="col-4 col-md-2 mb-3">
+                                <i class="fab fa-js fa-3x text-warning tech-icon"></i>
+                                <p>JavaScript</p>
+                            </div>
+                            <div class="col-4 col-md-2 mb-3">
+                                <i class="fab fa-bootstrap fa-3x text-purple tech-icon"></i>
+                                <p>Bootstrap</p>
+                            </div>
+                            <div class="col-4 col-md-2 mb-3">
+                                <i class="fab fa-flask fa-3x text-success tech-icon"></i>
+                                <p>Flask</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Rodapé -->
+                <div class="text-center mt-4 mb-3">
+                    <p class="footer-text">
+                        © 2024 Projeto Clima Brasil - Todos os direitos reservados
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- AOS Animation Library -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            AOS.init({
+                duration: 800,
+                easing: 'ease-in-out',
+                once: true
+            });
+        });
+    </script>
+</body>
+</html> 

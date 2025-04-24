@@ -3,6 +3,7 @@ import requests
 import datetime
 import json
 import os
+import unicodedata
 from geopy.geocoders import Nominatim
 from dotenv import load_dotenv
 
@@ -10,7 +11,61 @@ load_dotenv()  # Carregar variáveis de ambiente do arquivo .env
 
 app = Flask(__name__)
 app.secret_key = 'clima_brasil_secret_key'  # Chave para sessão
-API_KEY = os.getenv('OPENWEATHERMAP_API_KEY')
+API_KEY = os.getenv('OPENWEATHERMAP_API_KEY') or "96a82acf0b87dddd3bc26036f9125697"  # Usar a chave padrão se não encontrar no .env
+
+def remover_acentos(texto):
+    """Remove acentos de um texto"""
+    try:
+        # Unicode normalize transforma um caracter em seu equivalente sem acento
+        texto_sem_acentos = unicodedata.normalize('NFD', texto)
+        texto_sem_acentos = ''.join(c for c in texto_sem_acentos if unicodedata.category(c) != 'Mn')
+        return texto_sem_acentos
+    except Exception as e:
+        app.logger.error(f"Erro ao remover acentos: {str(e)}")
+        return texto  # Retorna o texto original em caso de erro
+
+def formatar_nome_cidade(cidade):
+    """Formata o nome da cidade para exibição, aplicando regras básicas de formatação"""
+    # Dicionário com traduções comuns
+    traducoes = {
+        'sao paulo': 'São Paulo',
+        'rio de janeiro': 'Rio de Janeiro',
+        'brasilia': 'Brasília',
+        'belem': 'Belém',
+        'curitiba': 'Curitiba',
+        'recife': 'Recife',
+        'porto alegre': 'Porto Alegre',
+        'belo horizonte': 'Belo Horizonte',
+        'fortaleza': 'Fortaleza',
+        'salvador': 'Salvador',
+        'manaus': 'Manaus',
+        'joao pessoa': 'João Pessoa',
+        'maceio': 'Maceió',
+        'florianopolis': 'Florianópolis',
+        'goiania': 'Goiânia',
+        'sao luis': 'São Luís',
+        'cuiaba': 'Cuiabá'
+        # Adicione mais cidades brasileiras comuns conforme necessário
+    }
+    
+    # Verificar se a cidade está no dicionário
+    cidade_lower = cidade.lower()
+    if cidade_lower in traducoes:
+        return traducoes[cidade_lower]
+    
+    # Se não estiver no dicionário, aplica formatações básicas
+    # Capitaliza cada palavra
+    palavras = cidade.split()
+    palavras_formatadas = []
+    
+    for palavra in palavras:
+        # Preposições e artigos comuns permanecem em minúsculas
+        if palavra.lower() in ['de', 'da', 'do', 'das', 'dos', 'e']:
+            palavras_formatadas.append(palavra.lower())
+        else:
+            palavras_formatadas.append(palavra.capitalize())
+    
+    return ' '.join(palavras_formatadas)
 
 def buscar_localizacao(nome_lugar):
     geolocator = Nominatim(user_agent="clima_brasil")
@@ -20,7 +75,7 @@ def buscar_localizacao(nome_lugar):
     return None, None, None
 
 def get_weather_data(city=None, lat=None, lon=None):
-    api_key = "96a82acf0b87dddd3bc26036f9125697"
+    api_key = API_KEY  # Usar a chave definida no topo do arquivo
     
     if city:
         # Tenta buscar coordenadas primeiro para melhorar a precisão
@@ -37,76 +92,113 @@ def get_weather_data(city=None, lat=None, lon=None):
         lon = lon if lon else -43.17
         url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric&lang=pt_br"
     
-    response = requests.get(url)
-    
-    if response.status_code == 200:
-        data = response.json()
-        # Extract relevant weather data
-        weather_data = {
-            'cidade': data['name'],
-            'pais': data.get('sys', {}).get('country', ''),
-            'temperatura': round(data['main']['temp']),
-            'sensacao': round(data['main']['feels_like']),
-            'descricao': data['weather'][0]['description'],
-            'icone': data['weather'][0]['icon'],
-            'vento': data['wind']['speed'],
-            'umidade': data['main']['humidity'],
-            'pressao': data['main']['pressure'],
-            'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
-            'lat': data['coord']['lat'],
-            'lon': data['coord']['lon']
-        }
-        return weather_data, None
-    else:
-        error_msg = "Cidade não encontrada. Tente novamente."
-        if response.status_code == 404:
-            error_msg = "Cidade não encontrada. Verifique o nome e tente novamente."
-        elif response.status_code == 401:
-            error_msg = "Erro de autenticação na API."
-        return None, error_msg
+    try:
+        response = requests.get(url)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Extract relevant weather data
+            weather_data = {
+                'cidade': formatar_nome_cidade(data['name']),  # Formata o nome da cidade para exibição
+                'pais': data.get('sys', {}).get('country', ''),
+                'temperatura': round(data['main']['temp']),
+                'sensacao': round(data['main']['feels_like']),
+                'descricao': data['weather'][0]['description'],
+                'icone': data['weather'][0]['icon'],
+                'vento': data['wind']['speed'],
+                'umidade': data['main']['humidity'],
+                'pressao': data['main']['pressure'],
+                'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
+                'lat': data['coord']['lat'],
+                'lon': data['coord']['lon']
+            }
+            # Adicionar temperatura máxima e mínima se disponíveis
+            if 'temp_max' in data['main']:
+                weather_data['temp_max'] = round(data['main']['temp_max'])
+            if 'temp_min' in data['main']:
+                weather_data['temp_min'] = round(data['main']['temp_min'])
+            
+            return weather_data, None
+        else:
+            error_msg = "Cidade não encontrada. Tente novamente."
+            if response.status_code == 404:
+                error_msg = "Cidade não encontrada. Verifique o nome e tente novamente."
+            elif response.status_code == 401:
+                app.logger.error(f"Erro de autenticação na API. Verifique a chave API_KEY.")
+                error_msg = "Erro de autenticação na API."
+            
+            app.logger.error(f"Erro na API do OpenWeatherMap: {response.status_code}")
+            return None, error_msg
+    except Exception as e:
+        app.logger.error(f"Erro ao obter dados do clima: {e}")
+        return None, "Erro ao conectar ao serviço meteorológico. Tente novamente mais tarde."
 
 def get_forecast_data(lat, lon):
-    api_key = "96a82acf0b87dddd3bc26036f9125697"
-    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric&lang=pt_br"
-    
-    response = requests.get(url)
-    
-    if response.status_code == 200:
-        data = response.json()
-        forecast_list = []
+    """
+    Obtém os dados de previsão do tempo para os próximos dias com base na latitude e longitude.
+    """
+    try:
+        api_key = API_KEY  # Usar a chave definida no topo do arquivo
         
-        # Filter one forecast per day (at noon)
+        # URL da API de previsão do OpenWeatherMap
+        url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&units=metric&lang=pt_br&appid={api_key}"
+        response = requests.get(url)
+        
+        if response.status_code != 200:
+            app.logger.error(f"Erro na API de previsão: {response.status_code}")
+            return None
+            
+        data = response.json()
+        
+        # Processar e organizar os dados de previsão
+        forecast_list = []
         date_processed = set()
         
         for item in data['list']:
+            # Converter timestamp para objeto datetime
             dt = datetime.datetime.fromtimestamp(item['dt'])
             date_str = dt.strftime('%Y-%m-%d')
             
-            # Skip if we already have this date
-            if date_str in date_processed:
+            # Pegar apenas uma previsão por dia (ao meio-dia)
+            if date_str in date_processed or dt.hour != 12:
                 continue
                 
-            # Only consider forecasts for noon (around 12:00)
-            if 10 <= dt.hour <= 14:
-                date_processed.add(date_str)
+            date_processed.add(date_str)
+            
+            # Tradução dos dias da semana
+            dia_semana = dt.strftime('%A')
+            traducoes_dia = {
+                'Monday': 'Segunda-feira', 
+                'Tuesday': 'Terça-feira', 
+                'Wednesday': 'Quarta-feira',
+                'Thursday': 'Quinta-feira', 
+                'Friday': 'Sexta-feira', 
+                'Saturday': 'Sábado', 
+                'Sunday': 'Domingo'
+            }
+            dia_semana_pt = traducoes_dia.get(dia_semana, dia_semana)
+            
+            forecast_day = {
+                'data': dt.strftime('%d/%m/%Y'),
+                'dia_semana': dia_semana_pt,
+                'temp_max': round(item['main']['temp_max']),
+                'temp_min': round(item['main']['temp_min']),
+                'descricao': item['weather'][0]['description'],
+                'icone': item['weather'][0]['icon'],
+                'umidade': item['main']['humidity'],
+                'vento': round(item['wind']['speed'])
+            }
+            
+            forecast_list.append(forecast_day)
+            
+            # Limitar a 5 dias
+            if len(forecast_list) >= 5:
+                break
                 
-                forecast_list.append({
-                    'data': dt.strftime('%d/%m'),
-                    'dia_semana': dt.strftime('%a'),
-                    'temperatura': round(item['main']['temp']),
-                    'descricao': item['weather'][0]['description'],
-                    'icone': item['weather'][0]['icon'],
-                    'umidade': item['main']['humidity'],
-                    'vento': item['wind']['speed']
-                })
-                
-                # Limit to 5 days
-                if len(forecast_list) >= 5:
-                    break
-        
         return forecast_list
-    else:
-        return []
+    except Exception as e:
+        app.logger.error(f"Erro ao obter dados de previsão: {e}")
+        return None
 
 def get_historical_data(lat, lon, city_name):
     # Esta função normalmente usaria a API de dados históricos
@@ -187,6 +279,46 @@ def get_historical_data(lat, lon, city_name):
             {'ano': 2019, 'evento': 'Chuvas fora de época', 'precipitacao': 150, 'impacto': 'Moderado'}
         ]
     
+    # Eventos históricos por cidade (simulados)
+    eventos_historicos = {
+        'Rio de Janeiro': [
+            {'ano': 2011, 'evento': 'Enchentes e deslizamentos na região serrana', 'vitimas': '900+', 'impacto': 'Severo'},
+            {'ano': 2019, 'evento': 'Chuvas de verão recordes', 'precipitacao': '400mm', 'impacto': 'Alto'},
+            {'ano': 2010, 'evento': 'Fortes chuvas', 'danos': 'Desabamentos em favelas', 'impacto': 'Alto'},
+        ],
+        'São Paulo': [
+            {'ano': 2021, 'evento': 'Crise hídrica', 'duracao': '8 meses', 'impacto': 'Alto'},
+            {'ano': 2019, 'evento': 'Tempestade severa', 'danos': 'Quedas de árvores e alagamentos', 'impacto': 'Moderado'},
+            {'ano': 2015, 'evento': 'Escassez de água', 'detalhe': 'Rodízio no abastecimento', 'impacto': 'Severo'},
+        ],
+        'Manaus': [
+            {'ano': 2021, 'evento': 'Cheia histórica do Rio Negro', 'nivel': '30m acima do normal', 'impacto': 'Severo'},
+            {'ano': 2012, 'evento': 'Inundação recorde', 'danos': 'Bairros submersos', 'impacto': 'Alto'},
+            {'ano': 2009, 'evento': 'Seca extrema na Amazônia', 'duracao': '3 meses', 'impacto': 'Alto'},
+        ],
+        'Recife': [
+            {'ano': 2022, 'evento': 'Enchentes e deslizamentos', 'vitimas': '120+', 'impacto': 'Severo'},
+            {'ano': 2017, 'evento': 'Alagamentos', 'danos': 'Bairros inteiros afetados', 'impacto': 'Alto'},
+            {'ano': 2010, 'evento': 'Erosão costeira', 'detalhe': 'Destruição de orla', 'impacto': 'Moderado'},
+        ],
+        'Porto Alegre': [
+            {'ano': 2023, 'evento': 'Inundações históricas', 'nivel': 'Rio Guaíba 5m acima', 'impacto': 'Severo'},
+            {'ano': 2015, 'evento': 'Enchentes', 'danos': 'Centro histórico afetado', 'impacto': 'Alto'},
+            {'ano': 2005, 'evento': 'Fortes chuvas', 'precipitacao': '300mm em 48h', 'impacto': 'Alto'},
+        ],
+        'Brasília': [
+            {'ano': 2023, 'evento': 'Seca prolongada', 'duracao': '5 meses', 'impacto': 'Alto'},
+            {'ano': 2017, 'evento': 'Crise hídrica', 'detalhe': 'Racionamento de água', 'impacto': 'Severo'},
+            {'ano': 2014, 'evento': 'Baixa umidade do ar', 'nivel': 'Abaixo de 12%', 'impacto': 'Moderado'},
+        ],
+    }
+    
+    # Obter eventos específicos para a cidade, ou usar genéricos baseados na latitude
+    city_historical_events = eventos_historicos.get(city_name, [])
+    # Se não houver eventos específicos, usar os eventos genéricos baseados na latitude
+    if not city_historical_events:
+        city_historical_events = local_events
+    
     # Culturas típicas e impactos baseados na região
     if abs(lat) < 15:  # Região tropical
         crop_impact = {
@@ -217,48 +349,9 @@ def get_historical_data(lat, lon, city_name):
         'monthly_temps': monthly_temps,
         'monthly_rainfall': monthly_rainfall,
         'extreme_events': local_events,
+        'city_historical_events': city_historical_events,
         'crop_impact': crop_impact
     }
-
-# Função para traduzir cidade para inglês (versão simplificada)
-def traduzir_para_ingles(texto):
-    # Dicionário de traduções comuns para cidades brasileiras
-    traducoes = {
-        'são paulo': 'sao paulo',
-        'rio de janeiro': 'rio de janeiro',
-        'brasília': 'brasilia',
-        'salvador': 'salvador',
-        'fortaleza': 'fortaleza',
-        'belo horizonte': 'belo horizonte',
-        'manaus': 'manaus',
-        'curitiba': 'curitiba',
-        'recife': 'recife',
-        'porto alegre': 'porto alegre',
-        'belém': 'belem',
-        'goiânia': 'goiania',
-        'florianópolis': 'florianopolis',
-        'cuiabá': 'cuiaba',
-        'joão pessoa': 'joao pessoa',
-        'são luís': 'sao luis',
-        'maceió': 'maceio',
-        'campo grande': 'campo grande',
-        'teresina': 'teresina',
-        'natal': 'natal'
-    }
-    
-    # Verificar se a cidade está no dicionário
-    texto_lower = texto.lower()
-    if texto_lower in traducoes:
-        return traducoes[texto_lower]
-    
-    # Se não estiver no dicionário, retorna o texto original
-    # sem acentos para melhor compatibilidade com APIs
-    import unicodedata
-    texto_sem_acentos = ''.join(
-        c for c in unicodedata.normalize('NFD', texto)
-        if unicodedata.category(c) != 'Mn'
-    )
-    return texto_sem_acentos
 
 @app.route('/')
 def index():
@@ -283,95 +376,702 @@ def index():
 
 @app.route('/buscar', methods=['POST'])
 def buscar():
-    city = request.form.get('cidade')
-    if not city:
-        return redirect(url_for('index'))
-    
-    weather_data, error = get_weather_data(city=city)
-    if error:
-        return render_template('error.html', message=error)
-    
-    # Armazenar dados na sessão
-    session['last_city'] = weather_data['cidade']
-    session['last_lat'] = weather_data['lat']
-    session['last_lon'] = weather_data['lon']
-    
-    forecast_data = get_forecast_data(weather_data['lat'], weather_data['lon'])
-    return render_template('index.html', weather=weather_data, forecast=forecast_data)
+    if request.method == 'POST':
+        cidade = request.form.get('cidade', '')
+        if not cidade:
+            return render_template('index.html', error="Por favor, digite o nome da cidade.")
+        
+        try:
+            # Obter dados do clima
+            weather_data, error = get_weather_data(city=cidade)
+            
+            if error:
+                # Se houver erro, volta para a página inicial com mensagem de erro
+                return render_template('index.html', error=error)
+            
+            # Armazenar dados na sessão para uso em outras rotas
+            session['weather_data'] = weather_data
+            
+            # Redirecionar para página de detalhes
+            return redirect(url_for('detalhes'))
+        except Exception as e:
+            # Tratar erros inesperados
+            app.logger.error(f"Erro ao buscar dados do clima: {str(e)}")
+            return render_template('index.html', error="Ocorreu um erro ao processar sua solicitação. Tente novamente.")
 
 @app.route('/insights')
 def insights():
-    # Usar cidade da sessão ou default para Rio de Janeiro
-    city = session.get('last_city', None)
-    lat = session.get('last_lat', -22.91)
-    lon = session.get('last_lon', -43.17)
+    try:
+        # Verificar se temos uma nova busca sendo feita através de um parâmetro de URL
+        cidade_pesquisada = request.args.get('cidade', None)
+        
+        if cidade_pesquisada:
+            # Se temos uma nova pesquisa, buscar os dados desta cidade
+            app.logger.info(f"Nova pesquisa de insights para: {cidade_pesquisada}")
+            weather_data, error = get_weather_data(city=cidade_pesquisada)
+            if not error:
+                # Armazenar na sessão apenas se não houver erro
+                session['last_city'] = weather_data['cidade']
+                session['last_lat'] = weather_data['lat']
+                session['last_lon'] = weather_data['lon']
+        else:
+            # Usar cidade da sessão ou default para Rio de Janeiro
+            cidade_pesquisada = session.get('last_city', 'Rio de Janeiro')
+            lat = session.get('last_lat', -22.91)
+            lon = session.get('last_lon', -43.17)
+            
+            if cidade_pesquisada:
+                weather_data, error = get_weather_data(city=cidade_pesquisada)
+            else:
+                weather_data, error = get_weather_data(lat=lat, lon=lon)
+        
+        if error:
+            app.logger.warning(f"Erro ao obter dados para insights: {error}. Usando cidade padrão.")
+            # Em caso de erro, usar dados padrão para Rio de Janeiro
+            weather_data = {
+                'cidade': cidade_pesquisada or 'Rio de Janeiro',
+                'pais': 'BR',
+                'temperatura': 28,
+                'sensacao': 30,
+                'descricao': 'céu limpo',
+                'icone': '01d',
+                'vento': 3.5,
+                'umidade': 70,
+                'pressao': 1012,
+                'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
+                'lat': -22.91,
+                'lon': -43.17
+            }
+        
+        # Obter dados históricos específicos da região
+        historical_data = get_historical_data(weather_data['lat'], weather_data['lon'], weather_data['cidade'])
+        
+        # Converter dados para JSON para uso nos gráficos
+        temp_data = json.dumps({
+            'labels': list(historical_data['monthly_temps'].keys()),
+            'values': list(historical_data['monthly_temps'].values())
+        })
+        
+        rainfall_data = json.dumps({
+            'labels': list(historical_data['monthly_rainfall'].keys()),
+            'values': list(historical_data['monthly_rainfall'].values())
+        })
+        
+        crop_impact_data = json.dumps(historical_data['crop_impact'])
+        
+        # Obter dados do mapa (uso da mesma função da rota do mapa)
+        try:
+            map_data = get_map_data(weather_data['cidade'], weather_data['lat'], weather_data['lon'])
+        except Exception as e:
+            app.logger.error(f"Erro ao obter dados do mapa: {e}")
+            map_data = {
+                'lat': weather_data['lat'],
+                'lon': weather_data['lon'],
+                'temperatura': weather_data['temperatura'],
+                'descricao': weather_data['descricao'],
+                'icone': weather_data['icone']
+            }
+        
+        # Obter desastres naturais ESPECIFICAMENTE para a região pesquisada
+        desastres = obter_desastres_por_regiao(weather_data['cidade'])
+        
+        return render_template(
+            'insights.html', 
+            weather=weather_data,
+            historical=historical_data,
+            temp_data=temp_data,
+            rainfall_data=rainfall_data,
+            crop_impact_data=crop_impact_data,
+            map_data=map_data,
+            desastres=desastres,
+            cidade_pesquisada=weather_data['cidade']  # Garantir que temos a cidade pesquisada
+        )
+    except Exception as e:
+        app.logger.error(f"Erro não tratado na rota insights: {e}")
+        # Em caso de erro, mostrar uma mensagem de erro
+        return render_template('error.html', message="Ocorreu um erro ao carregar os insights climáticos. Por favor, tente novamente mais tarde.")
+
+def get_map_data(cidade, lat, lon):
+    """Função auxiliar para obter dados formatados para o mapa"""
+    try:
+        # Tentar buscar dados atualizados
+        weather_data, error = get_weather_data(city=cidade)
+        
+        if error:
+            # Se houver erro, usar os dados de latitude e longitude fornecidos
+            return {
+                'cidade': cidade,
+                'lat': lat,
+                'lon': lon,
+                'temperatura': 25,  # Valor padrão
+                'descricao': 'céu limpo',
+                'icone': '01d'
+            }
+        
+        return {
+            'cidade': weather_data['cidade'],
+            'lat': weather_data['lat'],
+            'lon': weather_data['lon'],
+            'temperatura': weather_data['temperatura'],
+            'descricao': weather_data['descricao'],
+            'icone': weather_data['icone'],
+            'umidade': weather_data['umidade'],
+            'vento': weather_data['vento'],
+            'pais': weather_data.get('pais', 'BR')
+        }
+    except Exception as e:
+        app.logger.error(f"Erro ao obter dados para mapa: {e}")
+        return {
+            'cidade': cidade,
+            'lat': lat,
+            'lon': lon,
+            'temperatura': 25,
+            'descricao': 'céu limpo',
+            'icone': '01d'
+        }
+
+def obter_desastres_por_regiao(cidade):
+    """Obtém desastres naturais específicos para a região pesquisada"""
     
-    if city:
-        weather_data, error = get_weather_data(city=city)
+    # Primeira tentativa: buscar desastres específicos para a cidade
+    desastres_por_cidade = {
+        "Belford Roxo": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Belford Roxo, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '15.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Belford Roxo, afetando principalmente áreas próximas ao Rio Botas.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Belford Roxo, RJ',
+                'data': 'Dez/2020',
+                'pessoas_afetadas': '8.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Transbordamento do Rio Botas após chuvas intensas, afetando principalmente os bairros de São Bernardo e Lote XV.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro do Murundu, Belford Roxo',
+                'data': 'Jan/2022',
+                'pessoas_afetadas': '200+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra em área de encosta, resultando em desalojamento de diversas famílias.'
+            }
+        ],
+        "Nova Iguaçu": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Nova Iguaçu, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '20.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Enchentes em diversos bairros de Nova Iguaçu após fortes chuvas, com o transbordamento do Rio Botas e Rio Iguaçu.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro da Boa Esperança, Nova Iguaçu',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '150+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra em área residencial após período de chuvas intensas.'
+            }
+        ],
+        "Rio de Janeiro": [
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Rocinha, Rio de Janeiro',
+                'data': 'Abr/2023',
+                'pessoas_afetadas': '500+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos de terra na comunidade da Rocinha após chuvas torrenciais, afetando centenas de famílias.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Zona Norte, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '30.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos severos em bairros da Zona Norte como Madureira, Irajá e Pavuna após fortes chuvas.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro do Borel, Rio de Janeiro',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '300+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento que atingiu várias casas na comunidade do Borel, na Tijuca.'
+            }
+        ],
+        "São Paulo": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Marginal Tietê, São Paulo',
+                'data': 'Fev/2023',
+                'pessoas_afetadas': '100.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram o transbordamento do Rio Tietê, paralisando a principal via da cidade.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Franco da Rocha, SP',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '2.500+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos fatais na região metropolitana de São Paulo após chuvas intensas.'
+            }
+        ],
+        "Porto Alegre": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Porto Alegre, RS',
+                'data': 'Mai/2023',
+                'pessoas_afetadas': '150.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Histórica enchente do Rio Guaíba que atingiu níveis recordes, alagando o centro histórico e diversos bairros da capital gaúcha.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Região Central, Porto Alegre',
+                'data': 'Jun/2023',
+                'pessoas_afetadas': '80.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Segunda onda de cheias do Rio Guaíba que manteve diversos bairros alagados por mais de um mês.'
+            }
+        ],
+        "Recife": [
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Jaboatão dos Guararapes, PE',
+                'data': 'Mai/2022',
+                'pessoas_afetadas': '30.000+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos de terra em diversos morros da região metropolitana do Recife, causando mais de 100 mortes.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Centro do Recife, PE',
+                'data': 'Mai/2022',
+                'pessoas_afetadas': '20.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos severos no centro da cidade e em bairros históricos após chuvas torrenciais.'
+            }
+        ]
+    }
+    
+    # Verificar se temos dados específicos para a cidade por nome exato
+    for nome_cidade, desastres in desastres_por_cidade.items():
+        # Verificar se o nome da cidade está contido na consulta ou vice-versa
+        if nome_cidade.lower() in cidade.lower() or cidade.lower() in nome_cidade.lower():
+            app.logger.info(f"Encontrados desastres específicos para {nome_cidade}")
+            return desastres
+    
+    # Se não encontrou correspondência exata, continuar com o código existente
+    # Mapeamento de cidades para suas regiões/estados
+    mapeamento_regioes = {
+        'Rio de Janeiro': 'Rio de Janeiro',
+        'São Paulo': 'São Paulo',
+        'Belo Horizonte': 'Minas Gerais',
+        'Porto Alegre': 'Rio Grande do Sul',
+        'Florianópolis': 'Santa Catarina',
+        'Curitiba': 'Paraná',
+        'Salvador': 'Bahia',
+        'Recife': 'Pernambuco',
+        'Fortaleza': 'Ceará',
+        'Natal': 'Rio Grande do Norte',
+        'Manaus': 'Amazonas',
+        'Belém': 'Pará',
+        'Brasília': 'Distrito Federal',
+        'Goiânia': 'Goiás',
+        'Vitória': 'Espírito Santo',
+        'Cuiabá': 'Mato Grosso',
+        'Campo Grande': 'Mato Grosso do Sul',
+        'Teresina': 'Piauí',
+        'João Pessoa': 'Paraíba',
+        'Maceió': 'Alagoas',
+        'Aracaju': 'Sergipe',
+        'São Luís': 'Maranhão',
+        'Porto Velho': 'Rondônia',
+        'Boa Vista': 'Roraima',
+        'Macapá': 'Amapá',
+        'Palmas': 'Tocantins',
+        'Rio Branco': 'Acre',
+        'Belford Roxo': 'Rio de Janeiro',
+        'Nova Iguaçu': 'Rio de Janeiro',
+        'Duque de Caxias': 'Rio de Janeiro',
+        'São Gonçalo': 'Rio de Janeiro',
+        'Niterói': 'Rio de Janeiro'
+    }
+    
+    # Adicionando correspondência para cidades da Baixada Fluminense
+    cidades_rj = ['Belford Roxo', 'Nova Iguaçu', 'Duque de Caxias', 'São João de Meriti', 
+                  'Nilópolis', 'Mesquita', 'Queimados', 'Japeri', 'Magé', 'Guapimirim', 
+                  'Seropédica', 'Itaguaí', 'Paracambi']
+    
+    for cidade_rj in cidades_rj:
+        if cidade_rj.lower() in cidade.lower():
+            app.logger.info(f"Cidade {cidade} identificada como parte da região metropolitana do Rio de Janeiro")
+            mapeamento_regioes[cidade] = 'Rio de Janeiro'
+            break
+    
+    # Se a cidade não estiver no mapeamento, tenta identificar a região pelo nome
+    if cidade not in mapeamento_regioes:
+        for estado, uf in [
+            ('Acre', 'AC'), ('Alagoas', 'AL'), ('Amapá', 'AP'), ('Amazonas', 'AM'),
+            ('Bahia', 'BA'), ('Ceará', 'CE'), ('Distrito Federal', 'DF'), ('Espírito Santo', 'ES'),
+            ('Goiás', 'GO'), ('Maranhão', 'MA'), ('Mato Grosso', 'MT'), ('Mato Grosso do Sul', 'MS'),
+            ('Minas Gerais', 'MG'), ('Pará', 'PA'), ('Paraíba', 'PB'), ('Paraná', 'PR'),
+            ('Pernambuco', 'PE'), ('Piauí', 'PI'), ('Rio de Janeiro', 'RJ'), ('Rio Grande do Norte', 'RN'),
+            ('Rio Grande do Sul', 'RS'), ('Rondônia', 'RO'), ('Roraima', 'RR'), ('Santa Catarina', 'SC'),
+            ('São Paulo', 'SP'), ('Sergipe', 'SE'), ('Tocantins', 'TO')
+        ]:
+            if estado.lower() in cidade.lower() or uf.lower() in cidade.lower():
+                mapeamento_regioes[cidade] = estado
+                break
+    
+    # Região/estado da cidade pesquisada
+    regiao = mapeamento_regioes.get(cidade, "Região não identificada")
+    
+    # Base de dados simulada de desastres naturais para cada região
+    desastres_por_regiao = {
+        'Rio Grande do Sul': [
+            {
+                'tipo': 'Inundação',
+                'local': 'Rio Grande do Sul',
+                'data': 'Mai/2023',
+                'pessoas_afetadas': '400.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Grande inundação que afetou mais de 400 mil pessoas no RS em 2023, resultando em dezenas de mortes e danos significativos à infraestrutura.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Vale do Taquari, RS',
+                'data': 'Set/2023',
+                'pessoas_afetadas': '150.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Inundações severas no Vale do Taquari que destruíram várias comunidades e causaram perdas humanas significativas.'
+            },
+            {
+                'tipo': 'Seca',
+                'local': 'Metade Sul, RS',
+                'data': '2022',
+                'pessoas_afetadas': '500.000+',
+                'badge_class': 'warning',
+                'detalhes': 'Seca intensa que afetou a produção agrícola do estado, com perdas de bilhões na safra de soja e milho.'
+            }
+        ],
+        'Rio de Janeiro': [
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Petrópolis, RJ',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '25.000+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos de terra em Petrópolis/RJ devido às chuvas intensas, resultando em mais de 200 mortes.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Baixada Fluminense, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '50.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram inundações em cidades como Belford Roxo, Nova Iguaçu e Duque de Caxias, afetando dezenas de bairros.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Região Serrana, RJ',
+                'data': 'Jan/2011',
+                'pessoas_afetadas': '30.000+',
+                'badge_class': 'danger',
+                'detalhes': 'Um dos piores desastres naturais da história do Brasil, com mais de 900 mortes por deslizamentos de terra após chuvas intensas.'
+            }
+        ],
+        'São Paulo': [
+            {
+                'tipo': 'Inundação',
+                'local': 'Litoral Norte, SP',
+                'data': 'Fev/2023',
+                'pessoas_afetadas': '4.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Chuvas intensas provocaram inundações e deslizamentos no Litoral Norte de São Paulo, causando diversas mortes e isolando comunidades.'
+            },
+            {
+                'tipo': 'Seca',
+                'local': 'Região Metropolitana, SP',
+                'data': '2014-2015',
+                'pessoas_afetadas': '10.000.000+',
+                'badge_class': 'warning',
+                'detalhes': 'Crise hídrica severa que afetou o abastecimento de água na Grande São Paulo, com o sistema Cantareira atingindo níveis críticos.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'São Paulo (capital)',
+                'data': 'Anual',
+                'pessoas_afetadas': 'Variável',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos recorrentes durante o período de chuvas, afetando diversas regiões da cidade e o trânsito.'
+            }
+        ],
+        'Amazonas': [
+            {
+                'tipo': 'Inundação',
+                'local': 'Manaus e região',
+                'data': 'Mai/2021',
+                'pessoas_afetadas': '450.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Cheia histórica do Rio Negro, atingindo 30 metros e afetando comunidades ribeirinhas e bairros de Manaus.'
+            },
+            {
+                'tipo': 'Seca',
+                'local': 'Bacia Amazônica',
+                'data': '2010',
+                'pessoas_afetadas': '200.000+',
+                'badge_class': 'warning',
+                'detalhes': 'Seca extrema que reduziu drasticamente o nível dos rios, isolando comunidades e afetando a navegação fluvial.'
+            },
+            {
+                'tipo': 'Incêndio Florestal',
+                'local': 'Sul do Amazonas',
+                'data': '2019-2020',
+                'pessoas_afetadas': 'Indeterminado',
+                'badge_class': 'danger',
+                'detalhes': 'Queimadas de grande proporção que destruíram áreas significativas de floresta e afetaram a qualidade do ar.'
+            }
+        ],
+        'Bahia': [
+            {
+                'tipo': 'Inundação',
+                'local': 'Sul da Bahia',
+                'data': 'Dez/2021',
+                'pessoas_afetadas': '500.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram inundações em diversas cidades da Bahia, destruindo pontes, estradas e casas.'
+            },
+            {
+                'tipo': 'Seca',
+                'local': 'Sertão da Bahia',
+                'data': '2012-2017',
+                'pessoas_afetadas': '1.000.000+',
+                'badge_class': 'warning',
+                'detalhes': 'Período de seca prolongada que afetou o abastecimento de água e a agricultura no semiárido baiano.'
+            }
+        ],
+        'Mato Grosso': [
+            {
+                'tipo': 'Incêndio',
+                'local': 'Pantanal',
+                'data': 'Jul-Out/2020',
+                'pessoas_afetadas': '3.400.000+ ha',
+                'badge_class': 'danger',
+                'detalhes': 'Incêndios de grandes proporções que destruíram mais de 3,4 milhões de hectares do bioma Pantanal.'
+            },
+            {
+                'tipo': 'Seca',
+                'local': 'Norte do Mato Grosso',
+                'data': '2020-2021',
+                'pessoas_afetadas': 'Agricultura',
+                'badge_class': 'warning',
+                'detalhes': 'Seca prolongada que afetou a produção agrícola, especialmente de soja e milho.'
+            }
+        ]
+    }
+    
+    # Desastres para outras regiões do Nordeste
+    desastres_nordeste = [
+        {
+            'tipo': 'Seca',
+            'local': 'Semiárido Nordestino',
+            'data': '2012-2017',
+            'pessoas_afetadas': '10.000.000+',
+            'badge_class': 'warning',
+            'detalhes': 'Pior seca dos últimos 50 anos no Nordeste, afetando milhões de pessoas e a economia regional.'
+        },
+        {
+            'tipo': 'Inundação',
+            'local': 'Pernambuco',
+            'data': 'Mai/2022',
+            'pessoas_afetadas': '100.000+',
+            'badge_class': 'primary',
+            'detalhes': 'Chuvas intensas causaram inundações e deslizamentos em Recife e região metropolitana, resultando em mais de 100 mortes.'
+        }
+    ]
+    
+    # Desastres para outras regiões do Norte
+    desastres_norte = [
+        {
+            'tipo': 'Inundação',
+            'local': 'Acre',
+            'data': 'Fev/2021',
+            'pessoas_afetadas': '130.000+',
+            'badge_class': 'primary',
+            'detalhes': 'Cheia dos rios acreanos que afetou mais de 10 cidades e isolou comunidades ribeirinhas.'
+        },
+        {
+            'tipo': 'Queimadas',
+            'local': 'Amazônia Legal',
+            'data': '2019',
+            'pessoas_afetadas': 'Indeterminado',
+            'badge_class': 'danger',
+            'detalhes': 'Aumento significativo das queimadas na Amazônia, gerando preocupação internacional sobre o desmatamento.'
+        }
+    ]
+    
+    # Desastres para outras regiões do Centro-Oeste
+    desastres_centro_oeste = [
+        {
+            'tipo': 'Seca',
+            'local': 'Centro-Oeste',
+            'data': '2020-2021',
+            'pessoas_afetadas': 'Agricultura',
+            'badge_class': 'warning',
+            'detalhes': 'Seca que afetou a produção agrícola regional e o abastecimento de água.'
+        },
+        {
+            'tipo': 'Incêndio',
+            'local': 'Cerrado',
+            'data': 'Ago-Set/2021',
+            'pessoas_afetadas': 'Indeterminado',
+            'badge_class': 'danger',
+            'detalhes': 'Incêndios no Cerrado que destruíram vegetação nativa e afetaram a biodiversidade.'
+        }
+    ]
+    
+    # Desastres gerais para quando não temos informações específicas da região
+    desastres_gerais = [
+        {
+            'tipo': 'Inundação',
+            'local': 'Rio Grande do Sul',
+            'data': 'Mai/2023',
+            'pessoas_afetadas': '400.000+',
+            'badge_class': 'primary',
+            'detalhes': 'Grande inundação que afetou mais de 400 mil pessoas no RS em 2023.'
+        },
+        {
+            'tipo': 'Deslizamento',
+            'local': 'Petrópolis, RJ',
+            'data': 'Fev/2022',
+            'pessoas_afetadas': '25.000+',
+            'badge_class': 'danger',
+            'detalhes': 'Deslizamentos de terra em Petrópolis/RJ devido às chuvas intensas.'
+        },
+        {
+            'tipo': 'Seca',
+            'local': 'Nordeste',
+            'data': '2012-2017',
+            'pessoas_afetadas': '10.000.000+',
+            'badge_class': 'warning',
+            'detalhes': 'Seca prolongada afetando a região Nordeste, impactando a agricultura e o abastecimento de água.'
+        },
+        {
+            'tipo': 'Incêndio',
+            'local': 'Pantanal',
+            'data': 'Jul-Out/2020',
+            'pessoas_afetadas': '3.400.000+ ha',
+            'badge_class': 'danger',
+            'detalhes': 'Grandes incêndios no Pantanal destruíram mais de 3,4 milhões de hectares.'
+        },
+        {
+            'tipo': 'Inundação',
+            'local': 'Bahia',
+            'data': 'Dez/2021',
+            'pessoas_afetadas': '500.000+',
+            'badge_class': 'primary',
+            'detalhes': 'Fortes chuvas causaram inundações em diversas cidades da Bahia.'
+        }
+    ]
+    
+    # Estados por região (para classificar quando não temos dados específicos)
+    nordeste = ['Alagoas', 'Bahia', 'Ceará', 'Maranhão', 'Paraíba', 'Pernambuco', 'Piauí', 'Rio Grande do Norte', 'Sergipe']
+    norte = ['Acre', 'Amapá', 'Amazonas', 'Pará', 'Rondônia', 'Roraima', 'Tocantins']
+    centro_oeste = ['Distrito Federal', 'Goiás', 'Mato Grosso', 'Mato Grosso do Sul']
+    
+    # Verificar se temos dados específicos para a região pesquisada
+    if regiao in desastres_por_regiao:
+        app.logger.info(f"Encontrados desastres para a região: {regiao}")
+        return desastres_por_regiao[regiao]
+    elif regiao in nordeste:
+        return desastres_nordeste
+    elif regiao in norte:
+        return desastres_norte
+    elif regiao in centro_oeste:
+        return desastres_centro_oeste
     else:
-        weather_data, error = get_weather_data(lat=lat, lon=lon)
-    
-    if error:
-        return render_template('error.html', message=error)
-    
-    historical_data = get_historical_data(weather_data['lat'], weather_data['lon'], weather_data['cidade'])
-    
-    # Converter dados para JSON para uso nos gráficos
-    temp_data = json.dumps({
-        'labels': list(historical_data['monthly_temps'].keys()),
-        'values': list(historical_data['monthly_temps'].values())
-    })
-    
-    rainfall_data = json.dumps({
-        'labels': list(historical_data['monthly_rainfall'].keys()),
-        'values': list(historical_data['monthly_rainfall'].values())
-    })
-    
-    crop_impact_data = json.dumps(historical_data['crop_impact'])
-    
-    return render_template(
-        'insights.html', 
-        weather=weather_data,
-        historical=historical_data,
-        temp_data=temp_data,
-        rainfall_data=rainfall_data,
-        crop_impact_data=crop_impact_data
-    )
+        # Se não temos dados específicos, retornar os desastres gerais
+        return desastres_gerais
 
 @app.route('/mapa')
 def mapa():
-    cidade = request.args.get('cidade', 'Brasília')  # Cidade padrão: Brasília
+    try:
+        cidade = request.args.get('cidade', 'Brasília')  # Cidade padrão: Brasília
+        
+        # Traduzir a cidade para inglês para melhor precisão na API
+        cidade_en = formatar_nome_cidade(cidade)
+        
+        # Tentar buscar dados direto via get_weather_data para reusar o tratamento de erros
+        weather_data, error = get_weather_data(city=cidade_en)
+        
+        if error:
+            # Se houver erro, mostrar uma mensagem e criar dados padrão
+            app.logger.warning(f"Erro ao obter dados para mapa: {error}. Usando dados padrão.")
+            weather = {
+                'cidade': cidade,
+                'pais': 'BR',
+                'temperatura': 25,
+                'sensacao': 26,
+                'minima': 22,
+                'maxima': 28,
+                'pressao': 1013,
+                'umidade': 65,
+                'vento': 2.1,
+                'descricao': 'parcialmente nublado',
+                'icone': '03d',
+                'lat': -15.78, # Coordenadas padrão para Brasília
+                'lon': -47.93
+            }
+        else:
+            # Se não houver erro, preparar os dados para o template
+            weather = {
+                'cidade': weather_data['cidade'],
+                'pais': weather_data.get('pais', 'BR'),
+                'temperatura': weather_data['temperatura'],
+                'sensacao': weather_data.get('sensacao', weather_data['temperatura']),
+                'minima': weather_data.get('temp_min', round(weather_data['temperatura'] - 2)),
+                'maxima': weather_data.get('temp_max', round(weather_data['temperatura'] + 2)),
+                'pressao': weather_data.get('pressao', 1013),
+                'umidade': weather_data['umidade'],
+                'vento': weather_data['vento'],
+                'descricao': weather_data['descricao'],
+                'icone': weather_data['icone'],
+                'lat': weather_data['lat'],
+                'lon': weather_data['lon']
+            }
+        
+        return render_template('mapa.html', weather=weather)
     
-    # Traduzir a cidade para inglês para melhor precisão na API
-    cidade_en = traduzir_para_ingles(cidade)
-    
-    url = f'https://api.openweathermap.org/data/2.5/weather?q={cidade_en}&units=metric&lang=pt_br&appid={API_KEY}'
-    
-    response = requests.get(url)
-    data = response.json()
-    
-    # Verificar se a API retornou dados válidos
-    if response.status_code != 200:
-        return render_template('error.html', message='Cidade não encontrada. Tente novamente.')
-    
-    # Extrair dados do clima
-    weather = {
-        'cidade': data['name'],
-        'pais': data.get('sys', {}).get('country', ''),
-        'temperatura': round(data['main']['temp']),
-        'sensacao': round(data['main']['feels_like']),
-        'minima': round(data['main']['temp_min']),
-        'maxima': round(data['main']['temp_max']),
-        'pressao': data['main']['pressure'],
-        'umidade': data['main']['humidity'],
-        'vento': data['wind']['speed'],
-        'descricao': data['weather'][0]['description'],
-        'icone': data['weather'][0]['icon'],
-        'lat': data['coord']['lat'],
-        'lon': data['coord']['lon']
-    }
-    
-    return render_template('mapa.html', weather=weather)
+    except Exception as e:
+        # Em caso de erro inesperado, registrar e mostrar uma página com dados padrão
+        app.logger.error(f"Erro não tratado na rota do mapa: {e}")
+        
+        # Dados padrão para Brasília
+        weather = {
+            'cidade': 'Brasília',
+            'pais': 'BR',
+            'temperatura': 25,
+            'sensacao': 26,
+            'minima': 22,
+            'maxima': 28,
+            'pressao': 1013,
+            'umidade': 65,
+            'vento': 2.1,
+            'descricao': 'parcialmente nublado',
+            'icone': '03d',
+            'lat': -15.78,
+            'lon': -47.93
+        }
+        
+        return render_template('mapa.html', weather=weather)
 
 @app.route('/abrir_mapa')
 def abrir_mapa():
@@ -483,6 +1183,134 @@ def desastres_naturais():
 def sobre():
     # Rota para página de informações sobre a equipe
     return render_template('sobre.html')
+
+@app.route('/turma')
+def turma():
+    """Rota para página com informações sobre a turma de desenvolvimento"""
+    # Dados dos alunos
+    alunos = [
+        {
+            'nome': 'Yuri Fernandes de Oliveira',
+            'matricula': '202208614744',
+            'papel': 'Desenvolvedor Principal',
+            'github': 'https://github.com/yuri',
+            'linkedin': 'https://linkedin.com/in/yuri',
+            'projetos': [
+                {'nome': 'Sistema de Monitoramento Climático', 'url': '#', 'descricao': 'Sistema de análise de dados meteorológicos'},
+                {'nome': 'Dashboard de Análise', 'url': '#', 'descricao': 'Visualização de dados climáticos em tempo real'},
+                {'nome': 'API de Integração', 'url': '#', 'descricao': 'Serviço para integração com fontes de dados externas'}
+            ],
+            'contribuicoes': [
+                'Arquitetura do sistema e planejamento do projeto',
+                'Implementação das APIs de clima e previsão do tempo',
+                'Desenvolvimento do módulo de mapeamento de dados'
+            ]
+        },
+        {
+            'nome': 'Rodrigo Ortega G F Camacho',
+            'matricula': '202402303902',
+            'papel': 'Desenvolvedor Backend',
+            'github': 'https://github.com/rodrigo',
+            'linkedin': 'https://linkedin.com/in/rodrigo',
+            'projetos': [
+                {'nome': 'Serviço de Processamento de Dados', 'url': '#', 'descricao': 'Processamento de dados climáticos em larga escala'},
+                {'nome': 'Microserviços para Análise', 'url': '#', 'descricao': 'Arquitetura de microserviços para análise de dados'},
+                {'nome': 'Sistema de Cache Distribuído', 'url': '#', 'descricao': 'Implementação de cache para otimização de performance'}
+            ],
+            'contribuicoes': [
+                'Desenvolvimento do backend e infraestrutura',
+                'Implementação do banco de dados e camada de persistência',
+                'Otimização de performance e escalabilidade'
+            ]
+        },
+        {
+            'nome': 'Peterson Costa da Silva',
+            'matricula': '201603434535',
+            'papel': 'Desenvolvedor Frontend',
+            'github': 'https://github.com/peterson',
+            'linkedin': 'https://linkedin.com/in/peterson',
+            'projetos': [
+                {'nome': 'Interface Responsiva', 'url': '#', 'descricao': 'Design responsivo para aplicações web'},
+                {'nome': 'Visualização de Dados', 'url': '#', 'descricao': 'Componentes de visualização interativa'},
+                {'nome': 'Dashboard Analítico', 'url': '#', 'descricao': 'Painel de controle para monitoramento de métricas'}
+            ],
+            'contribuicoes': [
+                'Design e implementação da interface do usuário',
+                'Desenvolvimento de componentes reutilizáveis',
+                'Integração frontend-backend e consumo de APIs'
+            ]
+        },
+        {
+            'nome': 'Pedro Carvalho Bocos',
+            'matricula': '202308251457',
+            'papel': 'Analista de Dados',
+            'github': 'https://github.com/pedro',
+            'linkedin': 'https://linkedin.com/in/pedro',
+            'projetos': [
+                {'nome': 'Modelos Preditivos', 'url': '#', 'descricao': 'Algoritmos de previsão do tempo baseados em ML'},
+                {'nome': 'Análise Estatística', 'url': '#', 'descricao': 'Ferramentas para análise estatística avançada'},
+                {'nome': 'Visualização de Séries Temporais', 'url': '#', 'descricao': 'Gráficos dinâmicos para análise de tendências'}
+            ],
+            'contribuicoes': [
+                'Análise e processamento de dados meteorológicos',
+                'Implementação de algoritmos de machine learning',
+                'Desenvolvimento de modelos preditivos para eventos climáticos'
+            ]
+        }
+    ]
+    
+    return render_template('turma.html', alunos=alunos)
+
+@app.route('/detalhes')
+def detalhes():
+    # Verificar se há dados climáticos na sessão
+    weather_data = session.get('weather_data')
+    if not weather_data:
+        # Se não houver dados, redirecionar para a página inicial
+        return redirect(url_for('index'))
+    
+    # Extrair as coordenadas
+    lat = weather_data['lat']
+    lon = weather_data['lon']
+    cidade = weather_data['cidade']
+    
+    # Obter dados detalhados do clima atual
+    clima = {
+        'temperatura': weather_data['temperatura'],
+        'sensacao': weather_data.get('sensacao', weather_data['temperatura']),
+        'temp_max': weather_data.get('temp_max', round(weather_data['temperatura'] + 2)),
+        'temp_min': weather_data.get('temp_min', round(weather_data['temperatura'] - 2)),
+        'umidade': weather_data['umidade'],
+        'velocidade_vento': weather_data['vento'],
+        'descricao': weather_data['descricao'],
+        'icone': weather_data['icone'],
+        'pressao': weather_data.get('pressao', 1013),
+        'nascer_do_sol': '06:00',  # Valores padrão, em uma implementação real viriam da API
+        'por_do_sol': '18:00',     # Valores padrão, em uma implementação real viriam da API
+        'visibilidade': 10         # Valor padrão, em uma implementação real viria da API
+    }
+    
+    # Obter dados de previsão baseados na latitude e longitude da cidade
+    try:
+        previsao = get_forecast_data(lat, lon)
+        if previsao is None:
+            previsao = []  # Garantir que é uma lista vazia se não há dados
+    except Exception as e:
+        app.logger.error(f"Erro ao obter previsão: {e}")
+        previsao = []  # Em caso de erro, usar uma lista vazia
+    
+    # Armazenar dados adicionais na sessão para uso em outras rotas
+    session['last_city'] = cidade
+    session['last_lat'] = lat
+    session['last_lon'] = lon
+    
+    # Renderizar a página de detalhes com os dados do clima e previsão
+    return render_template('detalhes.html', 
+                          cidade=cidade, 
+                          lat=lat, 
+                          lon=lon, 
+                          clima=clima, 
+                          previsao=previsao)
 
 if __name__ == '__main__':
     app.run(debug=True) 

@@ -30,18 +30,8 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('mapa') }}">
-                                <i class="fas fa-map-marked-alt me-2"></i>Visualizar Mapa
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('desastres_naturais') }}">
-                                <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('sobre') }}">
-                                <i class="fas fa-users me-2"></i>Sobre
+                            <a class="nav-link" href="{{ url_for('turma') }}">
+                                <i class="fas fa-graduation-cap me-2"></i>Nossa Turma
                             </a>
                         </li>
                     </ul>
@@ -99,11 +89,8 @@
                             </div>
                         </div>
                         <div class="text-center mt-3">
-                            <a href="{{ url_for('mapa') }}" class="btn btn-outline-primary me-2">
-                                <i class="fas fa-map-marked-alt me-2"></i>Ver no Mapa
-                            </a>
-                            <a href="{{ url_for('mapa_externo') }}" class="btn btn-outline-success">
-                                <i class="fab fa-google me-2"></i>Abrir no Google Maps
+                            <a href="{{ url_for('insights') }}?cidade={{ weather.cidade }}" class="btn btn-outline-primary">
+                                <i class="fas fa-chart-line me-2"></i>Ver Insights Detalhados
                             </a>
                         </div>
                     </div>
@@ -143,7 +130,7 @@
                 <div class="card shadow-lg mt-4 mb-4 insights-banner">
                     <div class="card-body p-4 text-center">
                         <h3 class="text-primary mb-3"><i class="fas fa-lightbulb me-2"></i>Análise de Dados Climáticos</h3>
-                        <p class="lead">Acesse nossa página de insights para visualizar tendências climáticas, eventos extremos e impactos na agricultura.</p>
+                        <p class="lead">Acesse nossa página de insights para visualizar tendências climáticas, eventos extremos, mapas interativos e impactos na agricultura.</p>
                         <a href="{{ url_for('insights') }}" class="btn btn-primary btn-lg mt-2">
                             <i class="fas fa-chart-line me-2"></i>Ver Insights
                         </a>
