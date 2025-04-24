@@ -94,18 +94,6 @@
                     <i class="fas fa-chart-bar me-2"></i>Insights Climáticos: {{ weather.cidade }}
                 </h1>
                 
-                <!-- Formulário de pesquisa de cidade -->
-                <div class="card shadow-lg mb-4">
-                    <div class="card-body">
-                        <form action="{{ url_for('insights') }}" method="GET" class="d-flex">
-                            <input type="text" name="cidade" class="form-control me-2" placeholder="Digite o nome da cidade..." value="{{ cidade_pesquisada }}" required>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i> Pesquisar
-                            </button>
-                        </form>
-                    </div>
-                </div>
-                
                 <!-- Mapa Climático -->
                 <div class="card shadow-lg mb-4">
                     <div class="card-header bg-primary text-white">

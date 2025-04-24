@@ -1093,17 +1093,8 @@ def obter_desastres_por_regiao(cidade):
             app.logger.info(f"Encontrados desastres específicos para {nome_cidade}")
             return desastres
     
-    # Verificar se é uma cidade internacional ou desconhecida
-    return [
-        {
-            'tipo': 'Informação',
-            'local': cidade,
-            'data': 'N/A',
-            'pessoas_afetadas': 'N/A',
-            'badge_class': 'info',
-            'detalhes': 'Não temos dados de desastres naturais para esta localidade. Os registros disponíveis são apenas para cidades brasileiras.'
-        }
-    ]
+    # Restante do código existente para a função
+    // ... existing code ...
 
 @app.route('/mapa')
 def mapa():
