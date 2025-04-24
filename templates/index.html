@@ -89,8 +89,11 @@
                             </div>
                         </div>
                         <div class="text-center mt-3">
-                            <a href="{{ url_for('insights') }}?cidade={{ weather.cidade }}" class="btn btn-outline-primary">
+                            <a href="{{ url_for('insights') }}?cidade={{ weather.cidade }}" class="btn btn-outline-primary me-2">
                                 <i class="fas fa-chart-line me-2"></i>Ver Insights Detalhados
+                            </a>
+                            <a href="{{ url_for('mapa') }}?cidade={{ weather.cidade }}" class="btn btn-outline-info">
+                                <i class="fas fa-map-marked-alt me-2"></i>Ver no Mapa
                             </a>
                         </div>
                     </div>

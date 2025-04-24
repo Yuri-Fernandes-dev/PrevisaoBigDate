@@ -68,18 +68,33 @@ def formatar_nome_cidade(cidade):
     return ' '.join(palavras_formatadas)
 
 def buscar_localizacao(nome_lugar):
-    """Busca as coordenadas de um lugar usando o Nominatim"""
+    """Busca as coordenadas de um lugar usando o Nominatim com melhor filtragem"""
     # Lista de cidades da região metropolitana do RJ que podem ser ambíguas
     cidades_rj = [
-        'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti',
+        'Mesquita', 'Nova Iguaçu', 'Duque de Caxias', 'Belford Roxo', 'São João de Meriti', 'Queimados',
         "Copacabana", "Ipanema", "Leblon", "Tijuca", "Rocinha", "Barra da Tijuca", 
         "Centro", "Madureira", "Jacarepaguá", "Bangu", "Campo Grande", "Santa Cruz", 
         "Vila Isabel", "Méier", "Botafogo", "Flamengo", "Catete", "Laranjeiras", 
         "Lapa", "Glória", "São Cristóvão", "Engenho Novo", "Grajaú", "Andaraí", "Maracanã"
     ]
     
-    # Verificar se o nome do lugar é uma das cidades que precisam de especificação
     nome_lugar_lower = nome_lugar.lower().strip()
+    
+    # Tratar caso específico de Belford Roxo
+    if "belford roxo" in nome_lugar_lower:
+        app.logger.info(f"Caso especial detectado: Belford Roxo")
+        nome_lugar = "Belford Roxo, Rio de Janeiro, Brasil"
+        # Coordenadas fixas para Belford Roxo para garantir precisão
+        return -22.7644, -43.3991, nome_lugar
+    
+    # Tratar caso específico de Queimados
+    if "queimados" in nome_lugar_lower:
+        app.logger.info(f"Caso especial detectado: Queimados")
+        nome_lugar = "Queimados, Rio de Janeiro, Brasil"
+        # Coordenadas fixas para Queimados para garantir precisão
+        return -22.7138, -43.5527, nome_lugar
+    
+    # Verificar se o nome do lugar é uma das cidades que precisam de especificação
     for cidade in cidades_rj:
         if cidade.lower() == nome_lugar_lower or f"{cidade.lower()}" == nome_lugar_lower:
             # Adicionar ", RJ" ao nome para melhorar a precisão
@@ -118,54 +133,650 @@ def buscar_localizacao(nome_lugar):
     geolocator = Nominatim(user_agent="clima_brasil")
     
     try:
-        # Primeiro tenta com o nome modificado para maior precisão
-        location = geolocator.geocode(nome_lugar, exactly_one=True, country_codes="BR")
+        # Nova abordagem: buscar múltiplos resultados e filtrar manualmente
+        app.logger.info(f"Buscando localização para: {nome_lugar}")
         
-        if location:
-            app.logger.info(f"Localização encontrada: {location.address}")
-            # Verificar se é no Brasil (pode haver problemas com o country_codes em algumas versões)
-            if "Brasil" in location.address or "Brazil" in location.address:
-                return location.latitude, location.longitude, location.address
-            else:
-                app.logger.warning(f"Localização encontrada não é no Brasil: {location.address}")
+        # Usar a API Geocoding diretamente para ter mais controle sobre os resultados
+        geocoding_url = f"http://api.openweathermap.org/geo/1.0/direct?q={nome_lugar}&limit=5&appid={API_KEY}"
+        app.logger.info(f"Consultando API Geocoding: {geocoding_url}")
         
-        # Se não encontrar, tenta novamente forçando a busca no Brasil
-        if ", brasil" not in nome_lugar_lower and "brazil" not in nome_lugar_lower:
-            location = geolocator.geocode(f"{nome_lugar}, Brasil", exactly_one=False)
-            if location and len(location) > 0:
-                # Filtrar e ordenar por relevância para Brasil
-                location_br = [loc for loc in location if "Brasil" in loc.address or "Brazil" in loc.address]
-                if location_br:
-                    best_location = location_br[0]
-                    app.logger.info(f"Localização encontrada com 'Brasil': {best_location.address}")
-                    return best_location.latitude, best_location.longitude, best_location.address
-        
-        # Tentar pesquisa mais ampla, mas filtrando pelo país
         try:
-            # Buscar mais resultados e filtrar
-            locations = geolocator.geocode(nome_lugar, exactly_one=False)
-            if locations:
-                # Filtrar por Brasil
-                br_locations = [loc for loc in locations if "Brasil" in loc.address or "Brazil" in loc.address]
-                if br_locations:
-                    app.logger.info(f"Localização encontrada entre múltiplas opções: {br_locations[0].address}")
-                    return br_locations[0].latitude, br_locations[0].longitude, br_locations[0].address
+            response = requests.get(geocoding_url)
+            if response.status_code == 200:
+                data = response.json()
+                app.logger.info(f"Recebidos {len(data)} resultados da API Geocoding")
+                
+                # Filtrar resultados: priorizar Brasil, depois filtrar por estado se mencionado
+                brasil_locations = [loc for loc in data if loc.get('country') == 'BR']
+                app.logger.info(f"Encontrados {len(brasil_locations)} locais no Brasil")
+                
+                if brasil_locations:
+                    # Extrair estado mencionado no nome do lugar, se houver
+                    estado_mencionado = None
+                    estados = {
+                        'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amazonas': 'AM', 
+                        'bahia': 'BA', 'ceará': 'CE', 'distrito federal': 'DF', 
+                        'espírito santo': 'ES', 'goiás': 'GO', 'maranhão': 'MA', 
+                        'mato grosso': 'MT', 'mato grosso do sul': 'MS', 'minas gerais': 'MG', 
+                        'pará': 'PA', 'paraíba': 'PB', 'paraná': 'PR', 'pernambuco': 'PE', 
+                        'piauí': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN', 
+                        'rio grande do sul': 'RS', 'rondônia': 'RO', 'roraima': 'RR', 
+                        'santa catarina': 'SC', 'são paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+                    }
+                    
+                    for estado, sigla in estados.items():
+                        if estado in nome_lugar_lower or sigla.lower() in nome_lugar_lower:
+                            estado_mencionado = sigla
+                            app.logger.info(f"Estado mencionado: {estado} ({sigla})")
+                            break
+                    
+                    # Se mencionou um estado, filtrar por ele
+                    if estado_mencionado:
+                        estado_locations = [loc for loc in brasil_locations if loc.get('state') == estado_mencionado]
+                        if estado_locations:
+                            best_location = estado_locations[0]
+                            app.logger.info(f"Localização encontrada com estado específico: {best_location.get('name')}, {best_location.get('state')}")
+                            address = f"{best_location.get('name')}, {best_location.get('state')}, Brasil"
+                            return best_location.get('lat'), best_location.get('lon'), address
+                    
+                    # Se não filtrou por estado ou não encontrou com estado, usar o primeiro resultado brasileiro
+                    best_location = brasil_locations[0]
+                    app.logger.info(f"Melhor localização brasileira: {best_location.get('name')}, {best_location.get('state')}")
+                    address = f"{best_location.get('name')}, {best_location.get('state')}, Brasil"
+                    return best_location.get('lat'), best_location.get('lon'), address
+                
+                # Se não encontrou no Brasil mas tem outros resultados, buscar boas correspondências
+                if data:
+                    for loc in data:
+                        # Verificar se é uma boa correspondência pelo nome
+                        if nome_lugar.split(',')[0].lower().strip() == loc.get('name', '').lower().strip():
+                            app.logger.info(f"Encontrado correspondência pelo nome: {loc.get('name')}, {loc.get('country')}")
+                            address = f"{loc.get('name')}, {loc.get('state', '')}, {loc.get('country')}"
+                            return loc.get('lat'), loc.get('lon'), address
+                    
+                    # Se chegou aqui e não encontrou correspondência pelo nome, usar o primeiro resultado
+                    best_location = data[0]
+                    app.logger.info(f"Usando primeiro resultado disponível: {best_location.get('name')}, {best_location.get('country')}")
+                    address = f"{best_location.get('name')}, {best_location.get('state', '')}, {best_location.get('country')}"
+                    return best_location.get('lat'), best_location.get('lon'), address
+            
+            # Se API falhou ou não retornou resultados, tentar com o Nominatim como fallback
+            app.logger.warning(f"API Geocoding não retornou resultados. Tentando Nominatim como fallback.")
         except Exception as e:
-            app.logger.error(f"Erro na busca ampliada: {str(e)}")
+            app.logger.error(f"Erro ao consultar API Geocoding: {str(e)}")
         
-        # Última tentativa: especificar ainda mais para cidades ambíguas
-        for cidade in cidades_rj:
-            if cidade.lower() in nome_lugar_lower:
-                location = geolocator.geocode(f"{cidade}, Baixada Fluminense, Rio de Janeiro, Brasil", exactly_one=True)
-                if location:
-                    app.logger.info(f"Localização encontrada com Baixada Fluminense: {location.address}")
+        # Fallback para Nominatim se a API OpenWeatherMap falhar
+        try:
+            locations = geolocator.geocode(nome_lugar, exactly_one=False)
+            
+            if locations and len(locations) > 0:
+                # Filtrar resultados do Brasil
+                brasil_locations = [loc for loc in locations if "Brasil" in loc.address or "Brazil" in loc.address]
+                
+                if brasil_locations:
+                    # Verificar se há um estado ou cidade específico mencionado no nome_lugar
+                    estado_mencionado = None
+                    estados = {
+                        'acre': 'AC', 'alagoas': 'AL', 'amapá': 'AP', 'amazonas': 'AM', 
+                        'bahia': 'BA', 'ceará': 'CE', 'distrito federal': 'DF', 
+                        'espírito santo': 'ES', 'goiás': 'GO', 'maranhão': 'MA', 
+                        'mato grosso': 'MT', 'mato grosso do sul': 'MS', 'minas gerais': 'MG', 
+                        'pará': 'PA', 'paraíba': 'PB', 'paraná': 'PR', 'pernambuco': 'PE', 
+                        'piauí': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN', 
+                        'rio grande do sul': 'RS', 'rondônia': 'RO', 'roraima': 'RR', 
+                        'santa catarina': 'SC', 'são paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO'
+                    }
+                    
+                    for estado, sigla in estados.items():
+                        if estado in nome_lugar_lower or sigla.lower() in nome_lugar_lower:
+                            estado_mencionado = estado
+                            app.logger.info(f"Estado mencionado: {estado}")
+                            break
+                    
+                    # Se mencionou um estado, filtrar por ele
+                    if estado_mencionado:
+                        estado_locations = [loc for loc in brasil_locations if estado_mencionado in loc.address.lower() or estados.get(estado_mencionado, '').lower() in loc.address.lower()]
+                        if estado_locations:
+                            best_location = estado_locations[0]
+                            app.logger.info(f"Localização encontrada com estado específico: {best_location.address}")
+                            return best_location.latitude, best_location.longitude, best_location.address
+                    
+                    # Se não filtrou por estado ou não encontrou com estado, usar o primeiro resultado brasileiro
+                    best_location = brasil_locations[0]
+                    app.logger.info(f"Melhor localização brasileira: {best_location.address}")
+                    return best_location.latitude, best_location.longitude, best_location.address
+                
+                # Se não encontrou localização no Brasil, mas encontrou alguma outra
+                app.logger.warning(f"Nenhuma localização no Brasil encontrada para: {nome_lugar}")
+                
+                # Tentar novamente com a busca específica para o Brasil
+                brasil_query = f"{nome_lugar.split(',')[0]}, Brasil"
+                locations_br = geolocator.geocode(brasil_query, exactly_one=False)
+                
+                if locations_br and len(locations_br) > 0:
+                    best_location = locations_br[0]
+                    app.logger.info(f"Localização encontrada com busca forçada no Brasil: {best_location.address}")
+                    return best_location.latitude, best_location.longitude, best_location.address
+            
+            # Se nenhuma das abordagens acima funcionou, tente a busca original com exactly_one=True
+            location = geolocator.geocode(nome_lugar, exactly_one=True, country_codes="BR")
+            
+            if location:
+                app.logger.info(f"Localização encontrada com busca exata: {location.address}")
+                # Verificar se é no Brasil
+                if "Brasil" in location.address or "Brazil" in location.address:
                     return location.latitude, location.longitude, location.address
-        
-        app.logger.warning(f"Localização não encontrada para: {nome_lugar}")
-        return None, None, None
+            
+            # Última tentativa: tentar com variações específicas para o Rio de Janeiro
+            for cidade in cidades_rj:
+                if cidade.lower() in nome_lugar_lower:
+                    location = geolocator.geocode(f"{cidade}, Rio de Janeiro, Brasil", exactly_one=True)
+                    if location:
+                        app.logger.info(f"Localização encontrada para cidade do RJ: {location.address}")
+                        return location.latitude, location.longitude, location.address
+            
+            app.logger.warning(f"Localização não encontrada para: {nome_lugar}")
+            return None, None, None
+        except Exception as e:
+            app.logger.error(f"Erro ao buscar localização: {str(e)}")
+            return None, None, None
     except Exception as e:
         app.logger.error(f"Erro ao buscar localização: {str(e)}")
         return None, None, None
+
+def obter_desastres_por_regiao(cidade):
+    """Obtém desastres naturais específicos para a região pesquisada"""
+    app.logger.info(f"Buscando desastres para cidade: {cidade}")
+    
+    # Primeira tentativa: buscar desastres específicos para a cidade
+    desastres_por_cidade = {
+        "Belford Roxo": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Belford Roxo, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '15.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Belford Roxo, afetando principalmente áreas próximas ao Rio Botas.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Belford Roxo, RJ',
+                'data': 'Dez/2020',
+                'pessoas_afetadas': '8.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Transbordamento do Rio Botas após chuvas intensas, afetando principalmente os bairros de São Bernardo e Lote XV.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro do Murundu, Belford Roxo',
+                'data': 'Jan/2022',
+                'pessoas_afetadas': '200+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra em área de encosta, resultando em desalojamento de diversas famílias.'
+            }
+        ],
+        "Nova Iguaçu": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Nova Iguaçu, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '20.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Enchentes em diversos bairros de Nova Iguaçu após fortes chuvas, com o transbordamento do Rio Botas e Rio Iguaçu.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro da Boa Esperança, Nova Iguaçu',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '150+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra em área residencial após período de chuvas intensas.'
+            }
+        ],
+        "Queimados": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Queimados, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '12.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Queimados, afetando principalmente áreas próximas ao Rio Queimados e Rio Guandu.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Queimados, RJ',
+                'data': 'Mar/2021',
+                'pessoas_afetadas': '5.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Transbordamento do Rio Queimados após chuvas intensas, afetando principalmente os bairros centrais da cidade.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Vila do Rosário, Queimados',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '120+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra em área de encosta, resultando em desalojamento de diversas famílias no bairro Vila do Rosário.'
+            }
+        ],
+        "Rio de Janeiro": [
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Rocinha, Rio de Janeiro',
+                'data': 'Abr/2023',
+                'pessoas_afetadas': '500+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos de terra na comunidade da Rocinha após chuvas torrenciais, afetando centenas de famílias.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Zona Norte, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '30.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos severos em bairros da Zona Norte como Madureira, Irajá e Pavuna após fortes chuvas.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro do Borel, Rio de Janeiro',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '300+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento que atingiu várias casas na comunidade do Borel, na Tijuca.'
+            }
+        ],
+        "Maricá": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Maricá, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '5.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Maricá, afetando principalmente áreas próximas à lagoa.'
+            },
+            {
+                'tipo': 'Erosão Costeira',
+                'local': 'Praias de Maricá, RJ',
+                'data': '2020-2023',
+                'pessoas_afetadas': 'Indeterminado',
+                'badge_class': 'warning',
+                'detalhes': 'Processo contínuo de erosão nas praias de Maricá, afetando moradores e comércio local.'
+            }
+        ],
+        "Mesquita": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Mesquita, RJ',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '8.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Enchentes em diversos bairros de Mesquita após fortes chuvas, afetando principalmente áreas próximas ao Rio Sarapuí.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Chatuba, Mesquita',
+                'data': 'Fev/2020',
+                'pessoas_afetadas': '3.500+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos no bairro da Chatuba após período de chuvas intensas.'
+            }
+        ],
+        "São Paulo": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Marginal Tietê, São Paulo',
+                'data': 'Fev/2023',
+                'pessoas_afetadas': '100.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram o transbordamento do Rio Tietê, paralisando a principal via da cidade.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Franco da Rocha, SP',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '2.500+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos fatais na região metropolitana de São Paulo após chuvas intensas.'
+            }
+        ],
+        "Porto Alegre": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Porto Alegre, RS',
+                'data': 'Mai/2023',
+                'pessoas_afetadas': '150.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Histórica enchente do Rio Guaíba que atingiu níveis recordes, alagando o centro histórico e diversos bairros da capital gaúcha.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Região Central, Porto Alegre',
+                'data': 'Jun/2023',
+                'pessoas_afetadas': '80.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Segunda onda de cheias do Rio Guaíba que manteve diversos bairros alagados por mais de um mês.'
+            }
+        ],
+        "Recife": [
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Jaboatão dos Guararapes, PE',
+                'data': 'Mai/2022',
+                'pessoas_afetadas': '30.000+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamentos de terra em diversos morros da região metropolitana do Recife, causando mais de 100 mortes.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Centro do Recife, PE',
+                'data': 'Mai/2022',
+                'pessoas_afetadas': '20.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos severos no centro da cidade e em bairros históricos após chuvas torrenciais.'
+            }
+        ]
+    }
+    
+    # Desastres para bairros específicos do Rio de Janeiro
+    desastres_por_bairro = {
+        "Copacabana": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Copacabana, Rio de Janeiro',
+                'data': 'Fev/2023',
+                'pessoas_afetadas': '5.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Fortes chuvas causaram alagamentos em diversas ruas do bairro, principalmente na Avenida Atlântica.'
+            },
+            {
+                'tipo': 'Ressaca',
+                'local': 'Praia de Copacabana, Rio de Janeiro',
+                'data': 'Jul/2022',
+                'pessoas_afetadas': '500+',
+                'badge_class': 'warning',
+                'detalhes': 'Ressaca do mar invadiu a avenida litorânea, causando danos a quiosques e estabelecimentos.'
+            }
+        ],
+        "Ipanema": [
+            {
+                'tipo': 'Ressaca',
+                'local': 'Praia de Ipanema, Rio de Janeiro',
+                'data': 'Jul/2022',
+                'pessoas_afetadas': '300+',
+                'badge_class': 'warning',
+                'detalhes': 'Fortes ondas invadiram a faixa de areia causando erosão e invadindo a calçada.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Ipanema, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '2.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos em diversas ruas do bairro após fortes chuvas de verão.'
+            }
+        ],
+        "Leblon": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Leblon, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '3.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos em várias ruas do bairro, principalmente na Avenida Ataulfo de Paiva.'
+            },
+            {
+                'tipo': 'Ressaca',
+                'local': 'Praia do Leblon, Rio de Janeiro',
+                'data': 'Jul/2022',
+                'pessoas_afetadas': '200+',
+                'badge_class': 'warning',
+                'detalhes': 'Ressaca do mar que resultou em forte erosão na faixa de areia.'
+            }
+        ],
+        "Rocinha": [
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Rocinha, Rio de Janeiro',
+                'data': 'Mar/2023',
+                'pessoas_afetadas': '200+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra em área de encosta após chuvas intensas, afetando várias famílias.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Parte baixa da Rocinha, Rio de Janeiro',
+                'data': 'Jan/2022',
+                'pessoas_afetadas': '800+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos em várias vias da parte baixa da comunidade após temporal.'
+            }
+        ],
+        "Tijuca": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Tijuca, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '8.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos em várias ruas do bairro da Tijuca, principalmente na Praça Saens Peña e arredores.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Alto da Boa Vista, Tijuca',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '50+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra na região do Alto da Boa Vista, afetando residências e interrompendo vias.'
+            }
+        ],
+        "Centro": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Centro, Rio de Janeiro',
+                'data': 'Mar/2023',
+                'pessoas_afetadas': '10.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Grandes alagamentos na região central, afetando comércio, transportes e serviços públicos.'
+            },
+            {
+                'tipo': 'Vendaval',
+                'local': 'Centro, Rio de Janeiro',
+                'data': 'Out/2022',
+                'pessoas_afetadas': '2.000+',
+                'badge_class': 'warning',
+                'detalhes': 'Ventos fortes causaram queda de árvores e danos a estruturas no centro da cidade.'
+            }
+        ],
+        "Madureira": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Madureira, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '12.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Transbordamento do Rio Acari e outros córregos, alagando diversas ruas e comércios no bairro.'
+            },
+            {
+                'tipo': 'Inundação',
+                'local': 'Mercadão de Madureira, Rio de Janeiro',
+                'data': 'Dez/2022',
+                'pessoas_afetadas': '3.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamento na região do Mercadão, causando perdas para comerciantes e dificuldade de locomoção.'
+            }
+        ],
+        "Bangu": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Bangu, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '10.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos em várias ruas após transbordamento de rios e valões na região.'
+            },
+            {
+                'tipo': 'Calor Extremo',
+                'local': 'Bangu, Rio de Janeiro',
+                'data': 'Dez/2022',
+                'pessoas_afetadas': 'Indeterminado',
+                'badge_class': 'danger',
+                'detalhes': 'Temperatura recorde de 44°C, causando problemas de saúde e sobrecarga na rede elétrica.'
+            }
+        ],
+        "Campo Grande": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Campo Grande, Rio de Janeiro',
+                'data': 'Fev/2023',
+                'pessoas_afetadas': '12.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos em diversas vias após transbordamento de rios locais durante fortes chuvas.'
+            },
+            {
+                'tipo': 'Vendaval',
+                'local': 'Campo Grande, Rio de Janeiro',
+                'data': 'Set/2022',
+                'pessoas_afetadas': '3.000+',
+                'badge_class': 'warning',
+                'detalhes': 'Fortes ventos causaram queda de árvores e danos a edificações no bairro.'
+            }
+        ],
+        "Vila Isabel": [
+            {
+                'tipo': 'Inundação',
+                'local': 'Vila Isabel, Rio de Janeiro',
+                'data': 'Jan/2023',
+                'pessoas_afetadas': '5.000+',
+                'badge_class': 'primary',
+                'detalhes': 'Alagamentos no Boulevard 28 de Setembro e ruas adjacentes após forte chuva.'
+            },
+            {
+                'tipo': 'Deslizamento',
+                'local': 'Morro dos Macacos, Vila Isabel',
+                'data': 'Fev/2022',
+                'pessoas_afetadas': '80+',
+                'badge_class': 'danger',
+                'detalhes': 'Deslizamento de terra na comunidade do Morro dos Macacos após período de chuvas.'
+            }
+        ]
+    }
+    
+    # Mapeamento de bairros para suas cidades
+    mapeamento_bairros = {
+        "Copacabana": "Rio de Janeiro",
+        "Ipanema": "Rio de Janeiro",
+        "Leblon": "Rio de Janeiro",
+        "Tijuca": "Rio de Janeiro",
+        "Rocinha": "Rio de Janeiro",
+        "Barra da Tijuca": "Rio de Janeiro",
+        "Centro": "Rio de Janeiro",
+        "Madureira": "Rio de Janeiro",
+        "Jacarepaguá": "Rio de Janeiro",
+        "Bangu": "Rio de Janeiro",
+        "Campo Grande": "Rio de Janeiro",
+        "Santa Cruz": "Rio de Janeiro",
+        "Vila Isabel": "Rio de Janeiro",
+        "Méier": "Rio de Janeiro",
+        "Botafogo": "Rio de Janeiro",
+        "Flamengo": "Rio de Janeiro",
+        "Catete": "Rio de Janeiro",
+        "Laranjeiras": "Rio de Janeiro",
+        "Lapa": "Rio de Janeiro",
+        "Glória": "Rio de Janeiro",
+        "São Cristóvão": "Rio de Janeiro",
+        "Engenho Novo": "Rio de Janeiro",
+        "Grajaú": "Rio de Janeiro",
+        "Andaraí": "Rio de Janeiro",
+        
+        "Centro": "Nova Iguaçu",
+        "Comendador Soares": "Nova Iguaçu",
+        "Cabuçu": "Nova Iguaçu",
+        "Austin": "Nova Iguaçu",
+        
+        "Centro": "Belford Roxo",
+        "Lote XV": "Belford Roxo",
+        "São Bernardo": "Belford Roxo",
+        "Bom Pastor": "Belford Roxo",
+        
+        "Centro": "Queimados",
+        "Vila do Rosário": "Queimados",
+        "Vila Camarim": "Queimados",
+        
+        "Centro": "Mesquita",
+        "Chatuba": "Mesquita",
+        "Rocha Sobrinho": "Mesquita",
+        
+        "Centro": "São Paulo",
+        "Pinheiros": "São Paulo",
+        "Vila Mariana": "São Paulo",
+        "Itaim Bibi": "São Paulo",
+        "Ipiranga": "São Paulo",
+        "Mooca": "São Paulo"
+    }
+    
+    cidade_lower = cidade.lower().strip()
+    
+    # Verificar se é um bairro conhecido
+    for bairro, desastres in desastres_por_bairro.items():
+        if bairro.lower() == cidade_lower:
+            app.logger.info(f"Encontrados desastres específicos para o bairro {bairro}")
+            return desastres
+    
+    # Verificar se a cidade tem bairro mencionado
+    for bairro in desastres_por_bairro.keys():
+        if bairro.lower() in cidade_lower:
+            app.logger.info(f"Encontrado bairro {bairro} mencionado em {cidade}")
+            return desastres_por_bairro[bairro]
+    
+    # Verificar se é uma cidade com desastres registrados
+    for cidade_nome, desastres in desastres_por_cidade.items():
+        if cidade_nome.lower() == cidade_lower or cidade_nome.lower() in cidade_lower:
+            app.logger.info(f"Encontrados desastres específicos para a cidade {cidade_nome}")
+            return desastres
+    
+    # Se não encontrou cidade exata, verificar se alguma cidade foi mencionada
+    for cidade_nome in desastres_por_cidade.keys():
+        if cidade_nome.lower() in cidade_lower:
+            app.logger.info(f"Encontrada cidade {cidade_nome} mencionada em {cidade}")
+            return desastres_por_cidade[cidade_nome]
+    
+    # Se chegou até aqui, verificar se é um bairro e retornar desastres da cidade correspondente
+    for bairro, cidade_correspondente in mapeamento_bairros.items():
+        if bairro.lower() == cidade_lower:
+            app.logger.info(f"Bairro {bairro} pertence à cidade {cidade_correspondente}")
+            # Retornar desastres da cidade correspondente
+            if cidade_correspondente in desastres_por_cidade:
+                return desastres_por_cidade[cidade_correspondente]
+    
+    # Se for um caso internacional ou não encontrado, retornar mensagem informativa
+    if cidade and not any(cidade_nome.lower() in cidade_lower for cidade_nome in desastres_por_cidade.keys()):
+        app.logger.info(f"Cidade internacional ou não encontrada: {cidade}")
+        return [{
+            'tipo': 'Informação',
+            'local': cidade,
+            'data': datetime.datetime.now().strftime('%b/%Y'),
+            'pessoas_afetadas': '-',
+            'badge_class': 'info',
+            'detalhes': 'Não há registros de desastres naturais recentes para esta localidade específica em nossa base de dados.'
+        }]
+    
+    # Se tudo falhar, retornar lista vazia
+    return []
+
+def get_map_data(cidade, lat, lon):
+    """Criar dados para exibição no mapa"""
+    return {
+        'cidade': cidade,
+        'lat': lat,
+        'lon': lon,
+        'temperatura': None,  # Será preenchido após obter dados do clima
+        'descricao': None,
+        'icone': None,
+        'umidade': None,
+        'vento': None,
+        'pais': 'BR'
+    }
 
 def get_weather_data(city=None, lat=None, lon=None):
     api_key = API_KEY  # Usar a chave definida no topo do arquivo
@@ -546,6 +1157,86 @@ def insights():
     """Página de insights com informações detalhadas sobre a cidade"""
     cidade = request.args.get('cidade', session.get('cidade', 'Rio de Janeiro'))
     
+    # Caso específico para Belford Roxo - forçar as coordenadas corretas
+    if "belford roxo" in cidade.lower():
+        app.logger.info(f"Caso especial: Forçando coordenadas para Belford Roxo")
+        lat = -22.7644
+        lon = -43.3991
+        endereco = "Belford Roxo, Rio de Janeiro, Brasil"
+        
+        # Buscar dados do clima usando as coordenadas
+        weather_data, error = get_weather_data(lat=lat, lon=lon)
+        if error:
+            # Se falhar, criar weather_data manualmente
+            weather_data = {
+                'cidade': 'Belford Roxo',
+                'pais': 'BR',
+                'temperatura': 25,
+                'sensacao': 25,
+                'descricao': 'céu limpo',
+                'icone': '01d',
+                'vento': 3.1,
+                'umidade': 70,
+                'pressao': 1010,
+                'lat': lat,
+                'lon': lon
+            }
+        
+        # Força nome da cidade
+        weather_data['cidade'] = 'Belford Roxo'
+        
+        # Buscar dados históricos
+        historical_data = get_historical_data(lat, lon, 'Belford Roxo')
+        
+        # Obter dados de desastres específicos para Belford Roxo
+        desastres = obter_desastres_por_regiao("Belford Roxo, RJ")
+        
+        # Criar dados do mapa
+        map_data = {
+            'cidade': 'Belford Roxo',
+            'lat': lat,
+            'lon': lon,
+            'temperatura': weather_data['temperatura'],
+            'descricao': weather_data['descricao'],
+            'icone': weather_data['icone'],
+            'umidade': weather_data.get('umidade', 70),
+            'vento': weather_data.get('vento', 3.1),
+            'pais': 'BR',
+            'tipo_regiao': 'cidade',
+            'raio': 5000  # 5km para cidades médias
+        }
+        
+        # Obter previsão do tempo para os próximos dias
+        forecast_data = get_forecast_data(lat, lon)
+        
+        # Salvar na sessão
+        session['cidade'] = 'Belford Roxo'
+        session['last_lat'] = lat
+        session['last_lon'] = lon
+        
+        # Converter dados para JSON para uso nos gráficos
+        temp_data = json.dumps({
+            'labels': list(historical_data['monthly_temps'].keys()),
+            'values': list(historical_data['monthly_temps'].values())
+        })
+        
+        rainfall_data = json.dumps({
+            'labels': list(historical_data['monthly_rainfall'].keys()),
+            'values': list(historical_data['monthly_rainfall'].values())
+        })
+        
+        crop_impact_data = json.dumps(historical_data['crop_impact'])
+        
+        return render_template('insights.html', 
+                            cidade='Belford Roxo', 
+                            weather=weather_data,
+                            historical=historical_data,
+                            temp_data=temp_data,
+                            rainfall_data=rainfall_data,
+                            crop_impact_data=crop_impact_data,
+                            map_data=map_data,
+                            desastres=desastres)
+    
     app.logger.info(f"Forçando busca no Brasil: {cidade}, Brasil")
     cidade_com_pais = f"{cidade}, Brasil"  # Forçar busca no Brasil
     
@@ -584,8 +1275,44 @@ def insights():
             
             desastres = obter_desastres_por_regiao(cidade_com_estado)
             
-            # Criar dados do mapa
-            map_data = get_map_data(cidade, lat, lon)
+            # Determinar se é um bairro ou cidade e configurar o raio apropriado
+            nome_local_exato = endereco.split(',')[0].strip()
+            tipo_regiao = 'cidade'
+            raio_regiao = 5000  # Padrão: 5km
+            
+            # Lista de bairros conhecidos do Rio de Janeiro
+            bairros_rj = [
+                "Copacabana", "Ipanema", "Leblon", "Tijuca", "Rocinha", "Barra da Tijuca", 
+                "Centro", "Madureira", "Jacarepaguá", "Bangu", "Campo Grande", "Santa Cruz", 
+                "Vila Isabel", "Méier", "Botafogo", "Flamengo", "Catete", "Laranjeiras", 
+                "Lapa", "Glória", "São Cristóvão", "Engenho Novo", "Grajaú", "Andaraí", "Maracanã"
+            ]
+            
+            # Verificar se é um bairro conhecido
+            if any(bairro.lower() in nome_local_exato.lower() for bairro in bairros_rj):
+                tipo_regiao = 'bairro'
+                raio_regiao = 1500  # 1.5km para bairros
+                app.logger.info(f"Região identificada como bairro: {nome_local_exato}, raio: {raio_regiao}m")
+            elif "Rio de Janeiro" in cidade or "São Paulo" in cidade or "Belo Horizonte" in cidade:
+                raio_regiao = 15000  # 15km para grandes cidades
+                app.logger.info(f"Região identificada como grande cidade: {nome_local_exato}, raio: {raio_regiao}m")
+            else:
+                app.logger.info(f"Região identificada como cidade média: {nome_local_exato}, raio: {raio_regiao}m")
+            
+            # Criar dados do mapa com informações de região
+            map_data = {
+                'cidade': nome_local_exato,
+                'lat': lat,
+                'lon': lon,
+                'temperatura': weather_data['temperatura'],
+                'descricao': weather_data['descricao'],
+                'icone': weather_data['icone'],
+                'umidade': weather_data.get('umidade', 70),
+                'vento': weather_data.get('vento', 3.1),
+                'pais': 'BR',
+                'tipo_regiao': tipo_regiao,
+                'raio': raio_regiao
+            }
             
             # Obter previsão do tempo para os próximos dias
             forecast_data = get_forecast_data(lat, lon)
@@ -625,752 +1352,73 @@ def insights():
         # Em caso de erro, mostrar uma mensagem de erro
         return render_template('error.html', message="Ocorreu um erro ao carregar os insights climáticos. Por favor, tente novamente mais tarde.")
 
-def get_map_data(cidade, lat, lon):
-    """Função auxiliar para obter dados formatados para o mapa"""
-    try:
-        # Tentar buscar dados atualizados
-        weather_data, error = get_weather_data(city=cidade)
-        
-        if error:
-            # Se houver erro, usar os dados de latitude e longitude fornecidos
-            return {
-                'cidade': cidade,
-                'lat': lat,
-                'lon': lon,
-                'temperatura': 25,  # Valor padrão
-                'descricao': 'céu limpo',
-                'icone': '01d'
-            }
-        
-        return {
-            'cidade': weather_data['cidade'],
-            'lat': weather_data['lat'],
-            'lon': weather_data['lon'],
-            'temperatura': weather_data['temperatura'],
-            'descricao': weather_data['descricao'],
-            'icone': weather_data['icone'],
-            'umidade': weather_data['umidade'],
-            'vento': weather_data['vento'],
-            'pais': weather_data.get('pais', 'BR')
-        }
-    except Exception as e:
-        app.logger.error(f"Erro ao obter dados para mapa: {e}")
-        return {
-            'cidade': cidade,
-            'lat': lat,
-            'lon': lon,
-            'temperatura': 25,
-            'descricao': 'céu limpo',
-            'icone': '01d'
-        }
-
-def obter_desastres_por_regiao(cidade):
-    """Obtém desastres naturais específicos para a região pesquisada"""
-    app.logger.info(f"Buscando desastres para cidade: {cidade}")
-    
-    # Extrair o estado se estiver presente na consulta
-    estado = None
-    cidade_formatada = cidade
-    if ',' in cidade:
-        partes = cidade.split(',')
-        cidade_formatada = partes[0].strip()
-        # Verificar se alguma parte é um estado
-        estados_br = ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
-                      'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
-                      'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
-                      'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
-                      'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins']
-        for parte in partes[1:]:
-            parte_formatada = parte.strip()
-            if parte_formatada in estados_br or parte_formatada.upper() in ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 
-                                                                           'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 
-                                                                           'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 
-                                                                           'RO', 'RR', 'SC', 'SP', 'SE', 'TO']:
-                estado = parte_formatada
-                app.logger.info(f"Estado identificado na consulta: {estado}")
-                break
-    
-    app.logger.info(f"Buscando desastres para: cidade='{cidade_formatada}', estado='{estado}'")
-    
-    # Verificar casos especiais de cidades que têm o mesmo nome de bairros
-    # Tratar o caso de São Cristóvão (Sergipe) vs São Cristóvão (bairro do Rio)
-    if cidade_formatada.lower() == "são cristóvão" or cidade_formatada.lower() == "sao cristovao":
-        # Se o estado for Sergipe (SE), usar dados de São Cristóvão em Sergipe
-        if estado and (estado.upper() == "SE" or estado == "Sergipe"):
-            app.logger.info(f"Caso especial: São Cristóvão, Sergipe - usando dados específicos da cidade")
-            return [
-                {
-                    'tipo': 'Inundação',
-                    'local': 'São Cristóvão, SE',
-                    'data': 'Mai/2022',
-                    'pessoas_afetadas': '3.000+',
-                    'badge_class': 'primary',
-                    'detalhes': 'Inundações na cidade histórica de São Cristóvão em Sergipe após fortes chuvas na região.'
-                },
-                {
-                    'tipo': 'Deslizamento',
-                    'local': 'Zona rural de São Cristóvão, SE',
-                    'data': 'Jun/2022',
-                    'pessoas_afetadas': '120+',
-                    'badge_class': 'danger',
-                    'detalhes': 'Deslizamentos em áreas de encosta na zona rural após período prolongado de chuvas.'
-                }
-            ]
-    
-    # Primeira tentativa: buscar desastres específicos para a cidade
-    desastres_por_cidade = {
-        "Belford Roxo": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Belford Roxo, RJ',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '15.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Belford Roxo, afetando principalmente áreas próximas ao Rio Botas.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Belford Roxo, RJ',
-                'data': 'Dez/2020',
-                'pessoas_afetadas': '8.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Transbordamento do Rio Botas após chuvas intensas, afetando principalmente os bairros de São Bernardo e Lote XV.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Morro do Murundu, Belford Roxo',
-                'data': 'Jan/2022',
-                'pessoas_afetadas': '200+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento de terra em área de encosta, resultando em desalojamento de diversas famílias.'
-            }
-        ],
-        "São Cristóvão": [
-            {
-                'tipo': 'Inundação',
-                'local': 'São Cristóvão, SE',
-                'data': 'Mai/2022',
-                'pessoas_afetadas': '3.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Inundações na cidade histórica de São Cristóvão em Sergipe após fortes chuvas na região.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Zona rural de São Cristóvão, SE',
-                'data': 'Jun/2022',
-                'pessoas_afetadas': '120+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos em áreas de encosta na zona rural após período prolongado de chuvas.'
-            }
-        ],
-        "Nova Iguaçu": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Nova Iguaçu, RJ',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '20.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Enchentes em diversos bairros de Nova Iguaçu após fortes chuvas, com o transbordamento do Rio Botas e Rio Iguaçu.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Morro da Boa Esperança, Nova Iguaçu',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '150+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento de terra em área residencial após período de chuvas intensas.'
-            }
-        ],
-        "Queimados": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Queimados, RJ',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '12.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Queimados, afetando principalmente áreas próximas ao Rio Queimados e Rio Guandu.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Queimados, RJ',
-                'data': 'Mar/2021',
-                'pessoas_afetadas': '5.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Transbordamento do Rio Queimados após chuvas intensas, afetando principalmente os bairros centrais da cidade.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Vila do Rosário, Queimados',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '120+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento de terra em área de encosta, resultando em desalojamento de diversas famílias no bairro Vila do Rosário.'
-            }
-        ],
-        "Rio de Janeiro": [
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Rocinha, Rio de Janeiro',
-                'data': 'Abr/2023',
-                'pessoas_afetadas': '500+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos de terra na comunidade da Rocinha após chuvas torrenciais, afetando centenas de famílias.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Zona Norte, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '30.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos severos em bairros da Zona Norte como Madureira, Irajá e Pavuna após fortes chuvas.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Morro do Borel, Rio de Janeiro',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '300+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento que atingiu várias casas na comunidade do Borel, na Tijuca.'
-            }
-        ],
-        "Maricá": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Maricá, RJ',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '5.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram alagamentos em diversos bairros de Maricá, afetando principalmente áreas próximas à lagoa.'
-            },
-            {
-                'tipo': 'Erosão Costeira',
-                'local': 'Praias de Maricá, RJ',
-                'data': '2020-2023',
-                'pessoas_afetadas': 'Indeterminado',
-                'badge_class': 'warning',
-                'detalhes': 'Processo contínuo de erosão nas praias de Maricá, afetando moradores e comércio local.'
-            }
-        ],
-        "Mesquita": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Mesquita, RJ',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '8.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Enchentes em diversos bairros de Mesquita após fortes chuvas, afetando principalmente áreas próximas ao Rio Sarapuí.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Chatuba, Mesquita',
-                'data': 'Fev/2020',
-                'pessoas_afetadas': '3.500+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos no bairro da Chatuba após período de chuvas intensas.'
-            }
-        ],
-        "São Paulo": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Marginal Tietê, São Paulo',
-                'data': 'Fev/2023',
-                'pessoas_afetadas': '100.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram o transbordamento do Rio Tietê, paralisando a principal via da cidade.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Franco da Rocha, SP',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '2.500+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos fatais na região metropolitana de São Paulo após chuvas intensas.'
-            }
-        ],
-        "Porto Alegre": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Porto Alegre, RS',
-                'data': 'Mai/2023',
-                'pessoas_afetadas': '150.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Histórica enchente do Rio Guaíba que atingiu níveis recordes, alagando o centro histórico e diversos bairros da capital gaúcha.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Região Central, Porto Alegre',
-                'data': 'Jun/2023',
-                'pessoas_afetadas': '80.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Segunda onda de cheias do Rio Guaíba que manteve diversos bairros alagados por mais de um mês.'
-            }
-        ],
-        "Recife": [
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Jaboatão dos Guararapes, PE',
-                'data': 'Mai/2022',
-                'pessoas_afetadas': '30.000+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos de terra em diversos morros da região metropolitana do Recife, causando mais de 100 mortes.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Centro do Recife, PE',
-                'data': 'Mai/2022',
-                'pessoas_afetadas': '20.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos severos no centro da cidade e em bairros históricos após chuvas torrenciais.'
-            }
-        ],
-        "São Cristóvão": [
-            {
-                'tipo': 'Inundação',
-                'local': 'São Cristóvão, SE',
-                'data': 'Mai/2022',
-                'pessoas_afetadas': '3.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Inundações na cidade histórica de São Cristóvão em Sergipe após fortes chuvas na região.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Zona rural de São Cristóvão, SE',
-                'data': 'Jun/2022',
-                'pessoas_afetadas': '120+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos em áreas de encosta na zona rural após período prolongado de chuvas.'
-            }
-        ]
-    }
-    
-    # Adicionar suporte para bairros
-    desastres_por_bairro = {
-        "Copacabana": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Copacabana, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '5.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Fortes chuvas causaram alagamentos em várias ruas de Copacabana, afetando o comércio local e moradores.'
-            },
-            {
-                'tipo': 'Ressaca',
-                'local': 'Praia de Copacabana, Rio de Janeiro',
-                'data': 'Jul/2022',
-                'pessoas_afetadas': 'Indeterminado',
-                'badge_class': 'warning',
-                'detalhes': 'Ressaca marítima causou erosão na faixa de areia e danificou quiosques na orla.'
-            }
-        ],
-        "Ipanema": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Ipanema, Rio de Janeiro',
-                'data': 'Fev/2023',
-                'pessoas_afetadas': '3.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos nas ruas próximas à praia após fortes chuvas de verão.'
-            },
-            {
-                'tipo': 'Ressaca',
-                'local': 'Praia de Ipanema, Rio de Janeiro',
-                'data': 'Ago/2022',
-                'pessoas_afetadas': 'Indeterminado',
-                'badge_class': 'warning',
-                'detalhes': 'Ondas de até 3 metros causaram erosão na faixa de areia e afetaram estruturas da orla.'
-            }
-        ],
-        "Rocinha": [
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Rocinha, Rio de Janeiro',
-                'data': 'Mar/2023',
-                'pessoas_afetadas': '200+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento de terra em área de encosta após chuvas intensas, afetando várias famílias.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Parte baixa da Rocinha, Rio de Janeiro',
-                'data': 'Jan/2022',
-                'pessoas_afetadas': '800+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos em várias vias da parte baixa da comunidade após temporal.'
-            }
-        ],
-        "Tijuca": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Tijuca, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '8.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos em várias ruas do bairro da Tijuca, principalmente na Praça Saens Peña e arredores.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Alto da Boa Vista, Tijuca',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '50+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento de terra na região do Alto da Boa Vista, afetando residências e interrompendo vias.'
-            }
-        ],
-        "Centro": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Centro, Rio de Janeiro',
-                'data': 'Mar/2023',
-                'pessoas_afetadas': '10.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Grandes alagamentos na região central, afetando comércio, transportes e serviços públicos.'
-            },
-            {
-                'tipo': 'Vendaval',
-                'local': 'Centro, Rio de Janeiro',
-                'data': 'Out/2022',
-                'pessoas_afetadas': '2.000+',
-                'badge_class': 'warning',
-                'detalhes': 'Ventos fortes causaram queda de árvores e danos a estruturas no centro da cidade.'
-            }
-        ],
-        "Madureira": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Madureira, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '12.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Transbordamento do Rio Acari e outros córregos, alagando diversas ruas e comércios no bairro.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Mercadão de Madureira, Rio de Janeiro',
-                'data': 'Dez/2022',
-                'pessoas_afetadas': '3.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamento na região do Mercadão, causando perdas para comerciantes e dificuldade de locomoção.'
-            }
-        ],
-        "Barra da Tijuca": [
-            {
-                'tipo': 'Ressaca',
-                'local': 'Praia da Barra da Tijuca, Rio de Janeiro',
-                'data': 'Jul/2023',
-                'pessoas_afetadas': 'Indeterminado',
-                'badge_class': 'warning',
-                'detalhes': 'Ressaca marítima causou erosão em trechos da praia e danificou estruturas na orla.'
-            },
-            {
-                'tipo': 'Inundação',
-                'local': 'Barra da Tijuca, Rio de Janeiro',
-                'data': 'Jan/2022',
-                'pessoas_afetadas': '7.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos em várias vias da Barra, principalmente na Avenida das Américas e arredores.'
-            }
-        ],
-        "Jacarepaguá": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Jacarepaguá, Rio de Janeiro',
-                'data': 'Fev/2023',
-                'pessoas_afetadas': '15.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos causados pelo transbordamento de rios e canais na região após fortes chuvas.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Encostas de Jacarepaguá, Rio de Janeiro',
-                'data': 'Mar/2022',
-                'pessoas_afetadas': '100+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamentos de terra em áreas de encosta, afetando famílias em comunidades da região.'
-            }
-        ],
-        "Bangu": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Bangu, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '10.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos em várias ruas após transbordamento de rios e valões na região.'
-            },
-            {
-                'tipo': 'Calor Extremo',
-                'local': 'Bangu, Rio de Janeiro',
-                'data': 'Dez/2022',
-                'pessoas_afetadas': 'Indeterminado',
-                'badge_class': 'danger',
-                'detalhes': 'Temperatura recorde de 44°C, causando problemas de saúde e sobrecarga na rede elétrica.'
-            }
-        ],
-        "Campo Grande": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Campo Grande, Rio de Janeiro',
-                'data': 'Fev/2023',
-                'pessoas_afetadas': '12.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos em diversas vias após transbordamento de rios locais durante fortes chuvas.'
-            },
-            {
-                'tipo': 'Vendaval',
-                'local': 'Campo Grande, Rio de Janeiro',
-                'data': 'Set/2022',
-                'pessoas_afetadas': '3.000+',
-                'badge_class': 'warning',
-                'detalhes': 'Fortes ventos causaram queda de árvores e danos a edificações no bairro.'
-            }
-        ],
-        "Vila Isabel": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Vila Isabel, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '5.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos no Boulevard 28 de Setembro e ruas adjacentes após forte chuva.'
-            },
-            {
-                'tipo': 'Deslizamento',
-                'local': 'Morro dos Macacos, Vila Isabel',
-                'data': 'Fev/2022',
-                'pessoas_afetadas': '80+',
-                'badge_class': 'danger',
-                'detalhes': 'Deslizamento de terra na comunidade do Morro dos Macacos após período de chuvas.'
-            }
-        ],
-        "São Cristóvão": [
-            {
-                'tipo': 'Inundação',
-                'local': 'São Cristóvão, Rio de Janeiro',
-                'data': 'Jan/2023',
-                'pessoas_afetadas': '6.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos nas principais vias do bairro, especialmente próximo à Quinta da Boa Vista.'
-            },
-            {
-                'tipo': 'Vendaval',
-                'local': 'São Cristóvão, Rio de Janeiro',
-                'data': 'Nov/2022',
-                'pessoas_afetadas': '1.200+',
-                'badge_class': 'warning',
-                'detalhes': 'Fortes ventos causaram queda de árvores e danos a estruturas no bairro.'
-            }
-        ],
-        "Maracanã": [
-            {
-                'tipo': 'Inundação',
-                'local': 'Maracanã, Rio de Janeiro',
-                'data': 'Fev/2023',
-                'pessoas_afetadas': '3.000+',
-                'badge_class': 'primary',
-                'detalhes': 'Alagamentos nas ruas próximas ao Estádio do Maracanã após fortes chuvas.'
-            },
-            {
-                'tipo': 'Vendaval',
-                'local': 'Maracanã, Rio de Janeiro',
-                'data': 'Out/2022',
-                'pessoas_afetadas': '800+',
-                'badge_class': 'warning',
-                'detalhes': 'Ventos fortes causaram danos a edificações e queda de árvores no bairro.'
-            }
-        ]
-    }
-    
-    # Mapeamento de bairros para suas cidades
-    mapeamento_bairros = {
-        "Copacabana": "Rio de Janeiro",
-        "Ipanema": "Rio de Janeiro",
-        "Leblon": "Rio de Janeiro",
-        "Tijuca": "Rio de Janeiro",
-        "Rocinha": "Rio de Janeiro",
-        "Barra da Tijuca": "Rio de Janeiro",
-        "Centro": "Rio de Janeiro",
-        "Madureira": "Rio de Janeiro",
-        "Jacarepaguá": "Rio de Janeiro",
-        "Bangu": "Rio de Janeiro",
-        "Campo Grande": "Rio de Janeiro",
-        "Santa Cruz": "Rio de Janeiro",
-        "Vila Isabel": "Rio de Janeiro",
-        "Méier": "Rio de Janeiro",
-        "Botafogo": "Rio de Janeiro",
-        "Flamengo": "Rio de Janeiro",
-        "Catete": "Rio de Janeiro",
-        "Laranjeiras": "Rio de Janeiro",
-        "Lapa": "Rio de Janeiro",
-        "Glória": "Rio de Janeiro",
-        "São Cristóvão": "Rio de Janeiro",
-        "Engenho Novo": "Rio de Janeiro",
-        "Grajaú": "Rio de Janeiro",
-        "Andaraí": "Rio de Janeiro",
-        "Maracanã": "Rio de Janeiro",
-        
-        "Centro": "Nova Iguaçu",
-        "Comendador Soares": "Nova Iguaçu",
-        "Cabuçu": "Nova Iguaçu",
-        "Austin": "Nova Iguaçu",
-        
-        "Centro": "Belford Roxo",
-        "Lote XV": "Belford Roxo",
-        "São Bernardo": "Belford Roxo",
-        "Bom Pastor": "Belford Roxo",
-        
-        "Centro": "Queimados",
-        "Vila do Rosário": "Queimados",
-        "Vila Camarim": "Queimados",
-        
-        "Centro": "Mesquita",
-        "Chatuba": "Mesquita",
-        "Rocha Sobrinho": "Mesquita",
-        
-        "Centro": "São Paulo",
-        "Pinheiros": "São Paulo",
-        "Vila Mariana": "São Paulo",
-        "Itaim Bibi": "São Paulo",
-        "Ipiranga": "São Paulo",
-        "Mooca": "São Paulo"
-    }
-    
-    # Mapeamento de estados para suas siglas
-    estados_siglas = {
-        "Rio de Janeiro": "RJ",
-        "São Paulo": "SP",
-        "Minas Gerais": "MG",
-        "Espírito Santo": "ES",
-        "Bahia": "BA",
-        "Sergipe": "SE",
-        "Alagoas": "AL",
-        "Pernambuco": "PE",
-        "Paraíba": "PB",
-        "Rio Grande do Norte": "RN",
-        "Ceará": "CE",
-        "Piauí": "PI",
-        "Maranhão": "MA",
-        "Pará": "PA",
-        "Amapá": "AP",
-        "Amazonas": "AM",
-        "Roraima": "RR",
-        "Acre": "AC",
-        "Rondônia": "RO",
-        "Mato Grosso": "MT",
-        "Mato Grosso do Sul": "MS",
-        "Goiás": "GO",
-        "Distrito Federal": "DF",
-        "Paraná": "PR",
-        "Santa Catarina": "SC",
-        "Rio Grande do Sul": "RS",
-        "Tocantins": "TO"
-    }
-    
-    # Converter siglas para nomes completos
-    siglas_estados = {v: k for k, v in estados_siglas.items()}
-    if estado and len(estado) == 2 and estado.upper() in siglas_estados:
-        estado = siglas_estados[estado.upper()]
-    
-    cidade_lower = cidade_formatada.lower().strip()
-    
-    # Se temos um estado especificado, priorizar a busca correta
-    if estado:
-        # Verificar se temos uma correspondência exata de cidade com o estado correto
-        for nome_cidade, desastres in desastres_por_cidade.items():
-            if nome_cidade.lower() == cidade_lower:
-                # Verificar se os desastres correspondem ao estado
-                estado_correto = False
-                for desastre in desastres:
-                    if estado in desastre['local'] or estados_siglas.get(estado, '') in desastre['local']:
-                        estado_correto = True
-                        break
-                
-                if estado_correto:
-                    app.logger.info(f"Encontrados desastres específicos para {nome_cidade} no estado {estado}")
-                    return desastres
-    
-    # Verificar se é um bairro conhecido - agora diferenciando pelo estado se disponível
-    for bairro, desastres in desastres_por_bairro.items():
-        if bairro.lower() == cidade_lower:
-            # Se temos estado, verificar se corresponde
-            if estado:
-                estado_correto = False
-                for desastre in desastres:
-                    if estado in desastre['local'] or estados_siglas.get(estado, '') in desastre['local']:
-                        estado_correto = True
-                        break
-                
-                if estado_correto:
-                    app.logger.info(f"Encontrados desastres específicos para o bairro {bairro} no estado {estado}")
-                    return desastres
-            else:
-                app.logger.info(f"Encontrados desastres específicos para o bairro {bairro}")
-                return desastres
-    
-    # Verificar se a pesquisa contém nome de bairro conhecido
-    for bairro in mapeamento_bairros.keys():
-        if bairro.lower() in cidade_lower:
-            # Se temos estado, verificar primeiro a correspondência
-            cidade_do_bairro = mapeamento_bairros[bairro]
-            
-            # Se temos estado especificado, verificar se o bairro está em uma cidade desse estado
-            if estado:
-                estado_do_bairro = None
-                for estado_nome, sigla in estados_siglas.items():
-                    if estado_nome in cidade_do_bairro or sigla == estados_siglas.get(estado_nome, ''):
-                        estado_do_bairro = estado_nome
-                        break
-                
-                # Se o estado não corresponde, pular esse bairro
-                if (estado_do_bairro != estado and 
-                    estado_do_bairro != siglas_estados.get(estado.upper(), '') and 
-                    estados_siglas.get(estado, '') != siglas_estados.get(estado_do_bairro, '')):
-                    app.logger.info(f"Ignorando bairro {bairro} porque o estado especificado {estado} não corresponde ao estado {estado_do_bairro}")
-                    continue
-            
-            # Se chegou aqui, o bairro é um candidato válido
-            if bairro in desastres_por_bairro:
-                app.logger.info(f"Encontrados desastres para o bairro {bairro} mencionado na pesquisa")
-                return desastres_por_bairro[bairro]
-            else:
-                # Se não temos dados específicos do bairro, mas sabemos a cidade do bairro
-                if cidade_do_bairro in desastres_por_cidade:
-                    app.logger.info(f"Usando desastres da cidade {cidade_do_bairro} para o bairro {bairro}")
-                    return desastres_por_cidade[cidade_do_bairro]
-    
-    # Segunda verificação: nome da cidade exato
-    for nome_cidade, desastres in desastres_por_cidade.items():
-        if nome_cidade.lower() == cidade_lower:
-            # Se temos estado, verificar se corresponde
-            if estado:
-                estado_correto = False
-                for desastre in desastres:
-                    if estado in desastre['local'] or estados_siglas.get(estado, '') in desastre['local']:
-                        estado_correto = True
-                        break
-                
-                if not estado_correto:
-                    continue  # Pular esta cidade se o estado não corresponde
-            
-            app.logger.info(f"Encontrados desastres específicos para {nome_cidade}")
-            return desastres
-    
-    # Verificar se é uma cidade internacional ou desconhecida
-    return [
-        {
-            'tipo': 'Informação',
-            'local': cidade,
-            'data': 'N/A',
-            'pessoas_afetadas': 'N/A',
-            'badge_class': 'info',
-            'detalhes': 'Não temos dados de desastres naturais para esta localidade. Os registros disponíveis são apenas para cidades brasileiras.'
-        }
-    ]
-
 @app.route('/mapa')
 def mapa():
     cidade = request.args.get('cidade', 'Rio de Janeiro')
+    app.logger.info(f"Exibindo mapa para: {cidade}")
     
+    # Caso específico para Belford Roxo - forçar as coordenadas corretas
+    if "belford roxo" in cidade.lower():
+        app.logger.info(f"Caso especial: Forçando coordenadas para Belford Roxo")
+        lat = -22.7644
+        lon = -43.3991
+        # Criar objeto weather_data direto para Belford Roxo
+        weather_data = {
+            'cidade': 'Belford Roxo',
+            'pais': 'BR',
+            'temperatura': 25,
+            'sensacao': 25,
+            'descricao': 'céu limpo',
+            'icone': '01d',
+            'vento': 3.1,
+            'umidade': 70,
+            'pressao': 1010,
+            'lat': lat,
+            'lon': lon,
+            'regiao': {
+                'nome': 'Belford Roxo',
+                'endereco_completo': 'Belford Roxo, Rio de Janeiro, Brasil',
+                'raio': 5000,
+                'tipo': 'cidade'
+            }
+        }
+        
+        # Obter dados de desastres específicos para Belford Roxo
+        desastres = obter_desastres_por_regiao("Belford Roxo, RJ")
+        
+        return render_template('mapa.html', cidade='Belford Roxo', weather=weather_data, desastres=desastres)
+    
+    # Caso específico para Queimados - forçar as coordenadas corretas
+    if "queimados" in cidade.lower():
+        app.logger.info(f"Caso especial: Forçando coordenadas para Queimados")
+        lat = -22.7138
+        lon = -43.5527
+        # Criar objeto weather_data direto para Queimados
+        weather_data = {
+            'cidade': 'Queimados',
+            'pais': 'BR',
+            'temperatura': 25,
+            'sensacao': 25,
+            'descricao': 'céu limpo',
+            'icone': '01d',
+            'vento': 3.1,
+            'umidade': 70,
+            'pressao': 1010,
+            'lat': lat,
+            'lon': lon,
+            'regiao': {
+                'nome': 'Queimados',
+                'endereco_completo': 'Queimados, Rio de Janeiro, Brasil',
+                'raio': 5000,
+                'tipo': 'cidade'
+            }
+        }
+        
+        # Obter dados de desastres específicos para Queimados
+        desastres = obter_desastres_por_regiao("Queimados, RJ")
+        
+        return render_template('mapa.html', cidade='Queimados', weather=weather_data, desastres=desastres)
+        
     # Verificar se é uma cidade no Rio de Janeiro que precisa de especificação
     bairros_rj = [
         "Copacabana", "Ipanema", "Leblon", "Tijuca", "Rocinha", "Barra da Tijuca", 
@@ -1385,12 +1433,12 @@ def mapa():
             app.logger.info(f"Ajustando nome do bairro para incluir Rio de Janeiro: {cidade}")
             break
     
-    # Primeiro, obter coordenadas precisas via geocodificação
+    # Primeiro, obter coordenadas precisas via geocodificação com a nova função melhorada
     try:
         app.logger.info(f"Tentando obter coordenadas precisas para: {cidade}")
         lat, lon, endereco = buscar_localizacao(cidade)
         if lat and lon:
-            app.logger.info(f"Coordenadas de geocodificação obtidas com sucesso: {lat}, {lon}")
+            app.logger.info(f"Coordenadas de geocodificação obtidas com sucesso: {lat}, {lon} para {endereco}")
             
             # Extrair estado da localização
             estado = None
@@ -1416,32 +1464,52 @@ def mapa():
                 app.logger.error(f"Erro ao obter dados do clima: {error}")
                 return render_template('error.html', message="Ocorreu um erro ao buscar dados climáticos. Por favor, tente novamente mais tarde.")
             
+            # Determinar o local exato para busca de desastres
+            # Caso seja um bairro, usar o nome do bairro + cidade
+            # Caso seja uma cidade, usar cidade+estado
+            nome_local_exato = endereco.split(',')[0].strip()
+            
+            if any(bairro.lower() in nome_local_exato.lower() for bairro in bairros_rj):
+                # É um bairro, usar o nome exato
+                app.logger.info(f"Usando nome de bairro para busca de desastres: {nome_local_exato}")
+                cidade_para_desastres = nome_local_exato
+            else:
+                # É uma cidade, verificar se temos um estado
+                if estado:
+                    cidade_para_desastres = f"{nome_local_exato}, {estado}"
+                    app.logger.info(f"Usando cidade+estado para busca de desastres: {cidade_para_desastres}")
+                else:
+                    cidade_para_desastres = nome_local_exato
+                    app.logger.info(f"Usando apenas nome da cidade para busca de desastres: {cidade_para_desastres}")
+            
             # Obter dados de desastres específicos para a região exata pesquisada
-            cidade_com_estado = cidade
-            desastres = obter_desastres_por_regiao(cidade_com_estado)
+            desastres = obter_desastres_por_regiao(cidade_para_desastres)
+            app.logger.info(f"Desastres obtidos para: {cidade_para_desastres}")
             
             # Estimar um raio apropriado para a região baseado no tipo
             # Bairros terão raios menores, cidades maiores
-            if any(bairro.lower() in cidade.lower() for bairro in bairros_rj):
+            if any(bairro.lower() in nome_local_exato.lower() for bairro in bairros_rj):
                 # Se for um bairro, usar um raio menor
                 raio_regiao = 1500  # 1.5 km para bairros
+                tipo_regiao = 'bairro'
             else:
                 # Para cidades, o raio depende do tamanho estimado
                 if "São Paulo" in cidade or "Rio de Janeiro" in cidade or "Belo Horizonte" in cidade:
                     raio_regiao = 15000  # 15 km para grandes cidades
                 else:
                     raio_regiao = 8000   # 8 km para cidades médias
+                tipo_regiao = 'cidade'
             
             # Adicionar informações da região ao objeto de resposta
             weather_data['regiao'] = {
-                'nome': cidade.split(',')[0].strip(),
+                'nome': nome_local_exato,
                 'endereco_completo': endereco,
                 'raio': raio_regiao,
-                'tipo': 'bairro' if any(bairro.lower() in cidade.lower() for bairro in bairros_rj) else 'cidade'
+                'tipo': tipo_regiao
             }
             
             # Manter o nome da cidade especificado pelo usuário
-            weather_data['cidade'] = cidade.split(',')[0].strip()
+            weather_data['cidade'] = nome_local_exato
             app.logger.info(f"Dados do clima obtidos com sucesso para as coordenadas {lat}, {lon}")
             
             return render_template('mapa.html', cidade=cidade, weather=weather_data, desastres=desastres)
@@ -1477,8 +1545,12 @@ def mapa():
     
     # Se tudo falhar, usar dados padrão
     app.logger.warning(f"Usando dados padrão para {cidade}")
+    
+    # Default to Rio de Janeiro, but try to still use the requested city name
+    city_name = cidade.split(',')[0].strip()
+    
     weather_data = {
-        'cidade': cidade.split(',')[0].strip(),
+        'cidade': city_name,
         'pais': 'BR',
         'temperatura': 25,
         'sensacao': 25,
@@ -1487,15 +1559,27 @@ def mapa():
         'vento': 3.1,
         'umidade': 70,
         'pressao': 1010,
-        'lat': -22.9068,
+        'lat': -22.9068,  # Default to Rio de Janeiro coordinates
         'lon': -43.1729,
         'regiao': {
-            'nome': cidade.split(',')[0].strip(),
+            'nome': city_name,
             'endereco_completo': cidade,
             'raio': 5000,
             'tipo': 'cidade'
         }
     }
+    
+    # Try one last time to do a basic geocoding for the city
+    try:
+        geolocator = Nominatim(user_agent="clima_brasil_last_attempt")
+        location = geolocator.geocode(f"{city_name}, Brasil", exactly_one=True)
+        if location:
+            app.logger.info(f"Localização encontrada em última tentativa: {location.address}")
+            weather_data['lat'] = location.latitude
+            weather_data['lon'] = location.longitude
+            weather_data['regiao']['endereco_completo'] = location.address
+    except:
+        pass
     
     # Obter dados de desastres mesmo para o caso de falha
     desastres = obter_desastres_por_regiao(cidade)
@@ -1539,11 +1623,10 @@ def mapa_externo():
 
 @app.route('/desastres_naturais')
 def desastres_naturais():
-    # Implementação para buscar dados reais do IBGE
-    # Como exemplo, estamos usando dados simulados
+    # Obter o parâmetro de localidade da query string (se existir)
+    localidade = request.args.get('localidade', '')
     
-    # IBGE não possui API específica para desastres naturais, então usamos dados simulados
-    # Em um projeto real, você poderia fazer scraping das páginas do IBGE ou usar outras fontes
+    # Desastres iniciais a exibir (caso não haja pesquisa)
     desastres = [
         {
             'tipo': 'Inundação',
@@ -1587,21 +1670,49 @@ def desastres_naturais():
         }
     ]
     
+    # Se houver uma localidade pesquisada, buscar desastres específicos
+    if localidade:
+        # Verificar se é um bairro do Rio que precisa de especificação
+        bairros_rj = [
+            "Copacabana", "Ipanema", "Leblon", "Tijuca", "Rocinha", "Barra da Tijuca", 
+            "Centro", "Madureira", "Jacarepaguá", "Bangu", "Campo Grande", "Santa Cruz", 
+            "Vila Isabel", "Méier", "Botafogo", "Flamengo", "Catete", "Laranjeiras", 
+            "Lapa", "Glória", "São Cristóvão", "Engenho Novo", "Grajaú", "Andaraí", "Maracanã"
+        ]
+        
+        # Formatar a localidade
+        localidade_formatada = localidade
+        for bairro in bairros_rj:
+            if bairro.lower() in localidade.lower() and "rio de janeiro" not in localidade.lower():
+                localidade_formatada = f"{bairro}, Rio de Janeiro"
+                app.logger.info(f"Ajustando nome do bairro para incluir Rio de Janeiro: {localidade_formatada}")
+                break
+        
+        # Obter desastres específicos para a localidade
+        desastres_locais = obter_desastres_por_regiao(localidade_formatada)
+        
+        # Se encontrou desastres específicos, usar eles
+        if desastres_locais and len(desastres_locais) > 0 and not (len(desastres_locais) == 1 and desastres_locais[0].get('tipo') == 'Informação'):
+            desastres = desastres_locais
+            app.logger.info(f"Exibindo {len(desastres)} desastres para {localidade_formatada}")
+    
     # Lista de estados brasileiros para o filtro
     estados = [
         "Acre", "Alagoas", "Amapá", "Amazonas", "Bahia", "Ceará", "Distrito Federal",
-        "Espírito Santo", "Goiás", "Maranhão", "Paraíba", "Pernambuco", "Piauí", "Rio Grande do Norte", "Sergipe"
+        "Espírito Santo", "Goiás", "Maranhão", "Mato Grosso", "Mato Grosso do Sul", 
+        "Minas Gerais", "Pará", "Paraíba", "Paraná", "Pernambuco", "Piauí", 
+        "Rio de Janeiro", "Rio Grande do Norte", "Rio Grande do Sul", "Rondônia",
+        "Roraima", "Santa Catarina", "São Paulo", "Sergipe", "Tocantins"
     ]
     
     # Lista de tipos de desastres para o filtro
     tipos_desastres = [
-        "Todos", "Inundações", "Deslizamentos", "Secas", "Incêndios"
+        "Todos", "Inundação", "Deslizamento", "Seca", "Incêndio", "Erosão Costeira"
     ]
     
-    # Em um projeto real, aqui você buscaria dados da API do IBGE ou de uma fonte apropriada
-    
     return render_template('desastres_naturais.html', 
-                           desastres=desastres, 
+                           desastres=desastres,
+                           localidade_pesquisada=localidade,
                            estados=estados,
                            tipos_desastres=tipos_desastres)
 

@@ -1,0 +1,452 @@
+{% extends 'base.html' %}
+
+{% block title %}Detalhes do Clima - {{ weather.cidade }}{% endblock %}
+
+{% block head %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .weather-icon {
+        width: 120px;
+        height: 120px;
+    }
+    
+    .detail-card {
+        transition: transform 0.3s ease;
+    }
+    
+    .detail-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .forecast-day {
+        text-align: center;
+        border-radius: 10px;
+        padding: 15px;
+        background-color: white;
+        transition: all 0.3s ease;
+    }
+    
+    .forecast-day:hover {
+        transform: scale(1.05);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .forecast-temp {
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .forecast-icon {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .daily-temp-point {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    
+    .min-temp {
+        background-color: #8ED1FC;
+    }
+    
+    .max-temp {
+        background-color: #FF6B6B;
+    }
+    
+    .weather-details-icon {
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+    }
+    
+    .uv-low {
+        background-color: #8BC34A;
+    }
+    
+    .uv-moderate {
+        background-color: #FFC107;
+    }
+    
+    .uv-high {
+        background-color: #FF9800;
+    }
+    
+    .uv-very-high {
+        background-color: #F44336;
+    }
+    
+    .uv-extreme {
+        background-color: #9C27B0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <!-- Barra de navegação -->
+            <nav class="mb-4">
+                <ul class="nav nav-pills nav-fill bg-white rounded-pill shadow-sm p-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="fas fa-home me-2"></i>Página Inicial
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('mapa', cidade=weather.cidade) }}">
+                            <i class="fas fa-map-marked-alt me-2"></i>Mapa
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('insights', cidade=weather.cidade) }}">
+                            <i class="fas fa-chart-line me-2"></i>Insights
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <!-- Título da página -->
+            <h1 class="text-center text-white mb-4">
+                <i class="fas fa-cloud me-2"></i>Condições Climáticas: {{ weather.cidade }}
+            </h1>
+            
+            <!-- Condições atuais -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h2 class="text-center mb-0">Condições Atuais</h2>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-6 text-center mb-3 mb-md-0">
+                            <img src="https://openweathermap.org/img/wn/{{ weather.icone }}@4x.png" alt="{{ weather.descricao }}" class="weather-icon mb-2">
+                            <h3 class="display-4">{{ weather.temperatura }}°C</h3>
+                            <p class="h4 text-capitalize">{{ weather.descricao }}</p>
+                            <p class="text-muted">Sensação Térmica: {{ weather.sensacao }}°C</p>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="list-group">
+                                <div class="list-group-item d-flex align-items-center">
+                                    <div class="weather-details-icon bg-info text-white">
+                                        <i class="fas fa-tint"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-1">Umidade</h5>
+                                        <p class="mb-0">{{ weather.umidade }}%</p>
+                                    </div>
+                                </div>
+                                <div class="list-group-item d-flex align-items-center">
+                                    <div class="weather-details-icon bg-primary text-white">
+                                        <i class="fas fa-wind"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-1">Vento</h5>
+                                        <p class="mb-0">{{ weather.vento }} m/s</p>
+                                    </div>
+                                </div>
+                                <div class="list-group-item d-flex align-items-center">
+                                    <div class="weather-details-icon bg-secondary text-white">
+                                        <i class="fas fa-compress-alt"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-1">Pressão</h5>
+                                        <p class="mb-0">{{ weather.pressao }} hPa</p>
+                                    </div>
+                                </div>
+                                <div class="list-group-item d-flex align-items-center">
+                                    {% set uv_class = 'uv-low' %}
+                                    {% if weather.uv > 2 and weather.uv <= 5 %}
+                                        {% set uv_class = 'uv-moderate' %}
+                                    {% elif weather.uv > 5 and weather.uv <= 7 %}
+                                        {% set uv_class = 'uv-high' %}
+                                    {% elif weather.uv > 7 and weather.uv <= 10 %}
+                                        {% set uv_class = 'uv-very-high' %}
+                                    {% elif weather.uv > 10 %}
+                                        {% set uv_class = 'uv-extreme' %}
+                                    {% endif %}
+                                    <div class="weather-details-icon {{ uv_class }} text-white">
+                                        <i class="fas fa-sun"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-1">Índice UV</h5>
+                                        <p class="mb-0">{{ weather.uv }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <div class="d-flex">
+                                    <div class="me-3">
+                                        <i class="fas fa-info-circle fa-2x"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="alert-heading">Observações</h5>
+                                        <p>Dados obtidos da estação meteorológica mais próxima. Atualizados em: {{ weather.hora_atualizacao }}</p>
+                                        <a href="{{ url_for('mapa', cidade=weather.cidade) }}" class="btn btn-sm btn-primary">
+                                            <i class="fas fa-map-marked-alt me-1"></i>Ver no Mapa
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Previsão para os próximos dias -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h2 class="text-center mb-0">Previsão para os Próximos Dias</h2>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for day in forecast.dias %}
+                        <div class="col-md-4 col-lg-2 mb-3">
+                            <div class="forecast-day shadow-sm">
+                                <h5>{{ day.dia_semana }}</h5>
+                                <p class="text-muted small">{{ day.data }}</p>
+                                <img src="https://openweathermap.org/img/wn/{{ day.icone }}.png" alt="{{ day.descricao }}" class="forecast-icon">
+                                <p class="forecast-temp">{{ day.temp_max }}°</p>
+                                <p class="text-muted">{{ day.temp_min }}°</p>
+                                <p class="small text-capitalize">{{ day.descricao }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="chart-container">
+                                <canvas id="tempForecastChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-12 text-center">
+                            <div class="d-inline-block me-4">
+                                <span class="daily-temp-point max-temp"></span> Temperatura Máxima
+                            </div>
+                            <div class="d-inline-block">
+                                <span class="daily-temp-point min-temp"></span> Temperatura Mínima
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detalhes Adicionais -->
+            <div class="row mb-4">
+                <div class="col-md-6 mb-4 mb-md-0">
+                    <div class="card shadow-lg h-100 detail-card">
+                        <div class="card-header bg-info text-white">
+                            <h3 class="h5 mb-0">
+                                <i class="fas fa-sun me-2"></i>Nascer e Pôr do Sol
+                            </h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <i class="fas fa-sunrise fa-3x text-warning mb-3"></i>
+                                    <h4>Nascer do Sol</h4>
+                                    <p class="h5">{{ weather.nascer_do_sol }}</p>
+                                </div>
+                                <div class="col-6">
+                                    <i class="fas fa-sunset fa-3x text-danger mb-3"></i>
+                                    <h4>Pôr do Sol</h4>
+                                    <p class="h5">{{ weather.por_do_sol }}</p>
+                                </div>
+                            </div>
+                            <div class="text-center mt-3">
+                                <p>Duração do dia: {{ weather.duracao_dia }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow-lg h-100 detail-card">
+                        <div class="card-header bg-warning text-dark">
+                            <h3 class="h5 mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Alertas e Recomendações
+                            </h3>
+                        </div>
+                        <div class="card-body">
+                            {% if weather.alertas %}
+                                <div class="alert alert-danger">
+                                    <h5><i class="fas fa-exclamation-circle me-2"></i>Alertas Ativos</h5>
+                                    <ul class="mb-0">
+                                        {% for alerta in weather.alertas %}
+                                        <li>{{ alerta }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle me-2"></i>Nenhum alerta meteorológico ativo para esta região.
+                                </div>
+                            {% endif %}
+                            
+                            <h5 class="mt-3">Recomendações:</h5>
+                            <ul>
+                                {% if weather.temperatura > 30 %}
+                                <li>Mantenha-se hidratado e evite exposição prolongada ao sol.</li>
+                                {% elif weather.temperatura < 10 %}
+                                <li>Vista-se adequadamente para o frio.</li>
+                                {% endif %}
+                                
+                                {% if 'chuva' in weather.descricao.lower() or 'tempestade' in weather.descricao.lower() %}
+                                <li>Leve um guarda-chuva e evite áreas sujeitas a alagamentos.</li>
+                                {% endif %}
+                                
+                                {% if weather.uv > 7 %}
+                                <li>Use protetor solar e evite exposição ao sol entre 10h e 16h.</li>
+                                {% endif %}
+                                
+                                {% if weather.umidade < 30 %}
+                                <li>Mantenha-se hidratado, pois o ar está muito seco.</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Locais Próximos -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-success text-white">
+                    <h3 class="h5 mb-0">
+                        <i class="fas fa-map-marker-alt me-2"></i>Locais Próximos
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for local in locais_proximos %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-0 shadow-sm">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="card-title">{{ local.nome }}</h5>
+                                        <span class="badge bg-primary rounded-pill">{{ local.temperatura }}°C</span>
+                                    </div>
+                                    <p class="card-text text-capitalize">{{ local.descricao }}</p>
+                                    <a href="{{ url_for('mapa', cidade=local.nome) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-map-marked-alt me-1"></i>Ver no Mapa
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Rodapé -->
+            <div class="text-center mt-4 mb-3">
+                <a href="https://openweathermap.org/" target="_blank" class="text-white text-decoration-none small">
+                    <span>Dados fornecidos por OpenWeatherMap API</span>
+                    <img src="https://openweathermap.org/themes/openweathermap/assets/vendor/owm/img/logo_OpenWeatherMap_orange.svg" alt="OpenWeatherMap" class="ms-2" height="20">
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Dados para o gráfico de previsão de temperatura
+        const labels = [
+            {% for day in forecast.dias %}
+            "{{ day.dia_semana }}"{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+        const maxTemps = [
+            {% for day in forecast.dias %}
+            {{ day.temp_max }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+        const minTemps = [
+            {% for day in forecast.dias %}
+            {{ day.temp_min }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+        
+        // Criar gráfico de temperatura
+        const ctx = document.getElementById('tempForecastChart').getContext('2d');
+        const tempForecastChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Máxima (°C)',
+                        data: maxTemps,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointBackgroundColor: 'rgba(255, 99, 132, 1)'
+                    },
+                    {
+                        label: 'Mínima (°C)',
+                        data: minTemps,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y + '°C';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        grid: {
+                            color: 'rgba(200, 200, 200, 0.2)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value + '°C';
+                            }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(200, 200, 200, 0.2)'
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

@@ -1,606 +1,523 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clima Brasil - Mapa Climático</title>
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <style>
-        #map {
-            height: 500px;
-            width: 100%;
-            border-radius: 10px;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-        }
-        .map-container {
-            margin-bottom: 20px;
-            position: relative;
-        }
-        .weather-popup {
-            text-align: center;
-            padding: 6px;
-            max-width: 220px;
-        }
-        .weather-popup img {
-            width: 60px;
-            height: 60px;
-        }
-        .legend {
-            padding: 10px;
-            background: white;
-            box-shadow: 0 0 15px rgba(0,0,0,0.2);
-            border-radius: 5px;
-            margin: 10px;
-            line-height: 24px;
-            max-width: 240px;
-            position: absolute;
-            bottom: 30px;
-            right: 10px;
-            z-index: 1000;
-        }
-        .legend h6 {
-            margin: 0 0 10px 0;
-            font-weight: bold;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 6px;
-        }
-        .legend-color {
-            width: 18px;
-            height: 18px;
-            margin-right: 8px;
-            border-radius: 50%;
-        }
-        .map-controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        .temp-marker {
-            border-radius: 50%;
-            color: white;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.4);
-        }
-        #error-message {
-            display: none;
-            margin-top: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="row justify-content-center mt-4">
-            <div class="col-md-10 col-lg-8">
-                <nav class="mb-4">
-                    <ul class="nav nav-pills nav-fill bg-white rounded-pill shadow-sm p-2">
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('index') }}">
-                                <i class="fas fa-home me-2"></i>Página Inicial
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('insights') }}">
-                                <i class="fas fa-chart-line me-2"></i>Insights Climáticos
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link active" href="{{ url_for('mapa') }}">
-                                <i class="fas fa-map-marked-alt me-2"></i>Visualizar Mapa
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('desastres_naturais') }}">
-                                <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('sobre') }}">
-                                <i class="fas fa-users me-2"></i>Sobre
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
-                
-                <h1 class="text-center text-white mb-4">
-                    <i class="fas fa-map-marked-alt me-2"></i>Mapa Climático
-                </h1>
-                
-                <!-- Card do Mapa -->
-                <div class="card shadow-lg weather-card mb-4">
-                    <div class="card-header bg-primary text-white">
-                        <h2 class="text-center mb-0">
-                            <i class="fas fa-map-marker-alt me-2"></i>{{ weather.cidade }} 
-                            {% if weather.pais %}<span class="badge bg-light text-dark ms-2">{{ weather.pais }}</span>{% endif %}
+{% extends 'base.html' %}
+
+{% block title %}Mapa Climático - {{ cidade }}{% endblock %}
+
+{% block head %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map {
+        height: 500px;
+        width: 100%;
+        border-radius: 10px;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+    
+    .weather-icon-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .weather-icon-container img {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .temp-label {
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 10px;
+        padding: 2px 6px;
+        font-weight: bold;
+        font-size: 12px;
+        margin-top: -5px;
+    }
+    
+    .weather-popup {
+        text-align: center;
+        min-width: 200px;
+    }
+    
+    .weather-popup h3 {
+        margin-bottom: 5px;
+        font-size: 1.2rem;
+    }
+    
+    .weather-popup p {
+        margin-bottom: 5px;
+    }
+    
+    .region-popup {
+        padding: 5px;
+    }
+    
+    .region-popup h3 {
+        margin-bottom: 5px;
+        font-size: 1.1rem;
+    }
+    
+    .map-controls {
+        margin-top: 15px;
+    }
+    
+    .disaster-legend {
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .disaster-marker {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    
+    .disaster-marker-color {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    
+    .debug-info {
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        margin-top: 20px;
+        font-family: monospace;
+        display: none;
+    }
+    
+    .debug-info.visible {
+        display: block;
+    }
+    
+    #debug-toggle {
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-10 offset-md-1">
+            <!-- Barra de navegação -->
+            <nav class="mb-4">
+                <ul class="nav nav-pills nav-fill bg-white rounded-pill shadow-sm p-2">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="fas fa-home me-2"></i>Página Inicial
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('insights') }}">
+                            <i class="fas fa-chart-line me-2"></i>Insights Climáticos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('desastres_naturais') }}">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <!-- Título da página -->
+            <h1 class="text-center text-white mb-4">
+                <i class="fas fa-map-marked-alt me-2"></i>Mapa Climático: {{ cidade }}
+            </h1>
+
+            <!-- Card do mapa -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h2 class="h4 mb-0">
+                            <i class="fas fa-map-pin me-2"></i>{{ cidade }}
                         </h2>
+                        <div class="d-flex align-items-center">
+                            <img src="https://openweathermap.org/img/wn/{{ weather.icone }}@2x.png" alt="{{ weather.descricao }}" style="width: 50px; height: 50px;">
+                            <div class="ms-2 text-end">
+                                <h3 class="h4 mb-0">{{ weather.temperatura }}°C</h3>
+                                <p class="mb-0 text-capitalize">{{ weather.descricao }}</p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="row align-items-center mb-4">
-                            <div class="col-md-6 text-center mb-3 mb-md-0">
-                                <img src="https://openweathermap.org/img/wn/{{ weather.icone }}@2x.png" alt="{{ weather.descricao }}" class="weather-icon">
-                                <h4 class="mt-2 text-capitalize">{{ weather.descricao }}</h4>
-                                <h2>{{ weather.temperatura }}°C</h2>
+                </div>
+                <div class="card-body p-0">
+                    <div id="map"></div>
+                </div>
+                <div class="card-footer bg-light">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="weather-details">
+                                <p><i class="fas fa-tint me-2 text-primary"></i> Umidade: {{ weather.umidade }}%</p>
+                                <p><i class="fas fa-wind me-2 text-info"></i> Vento: {{ weather.vento }} m/s</p>
                             </div>
-                            <div class="col-md-6">
-                                <div class="weather-details">
-                                    <p><i class="fas fa-thermometer-half me-2"></i> Sensação térmica: {{ weather.sensacao }}°C</p>
-                                    <p><i class="fas fa-wind me-2"></i> Vento: {{ weather.vento }} m/s</p>
-                                    <p><i class="fas fa-tint me-2"></i> Umidade: {{ weather.umidade }}%</p>
-                                    <p><i class="fas fa-compress-alt me-2"></i> Pressão: {{ weather.pressao }} hPa</p>
-                                    <p><i class="fas fa-map-pin me-2"></i> Coordenadas: {{ weather.lat }}, {{ weather.lon }}</p>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <div class="map-actions">
+                                <a href="{{ url_for('mapa_externo') }}?lat={{ weather.lat }}&lon={{ weather.lon }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                    <i class="fab fa-google me-1"></i> Ver no Google Maps
+                                </a>
+                                <a href="{{ url_for('insights') }}?cidade={{ cidade }}" class="btn btn-outline-info btn-sm ms-2">
+                                    <i class="fas fa-chart-line me-1"></i> Ver Insights
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controles do Mapa -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h3 class="h5 mb-0">Controles do Mapa</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="mapView" class="form-label">Visualização:</label>
+                                <select class="form-select" id="mapView">
+                                    <option value="streets">Ruas</option>
+                                    <option value="satellite">Satélite</option>
+                                    <option value="dark">Mapa Noturno</option>
+                                    <option value="topo">Topográfico</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="regionRadius" class="form-label">Raio da Região:</label>
+                                <div class="input-group">
+                                    <input type="range" class="form-range" id="regionRadius" min="500" max="15000" step="500" value="{{ weather.regiao.raio }}">
+                                    <span class="ms-2" id="radiusValue">{{ weather.regiao.raio//1000 }} km</span>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Controles do Mapa -->
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <div class="btn-group d-flex" role="group">
-                                    <button type="button" class="btn btn-outline-primary active" id="btn-mapa-streets"><i class="fas fa-road"></i> Ruas</button>
-                                    <button type="button" class="btn btn-outline-info" id="btn-mapa-temp"><i class="fas fa-temperature-high"></i> Temperatura</button>
-                                    <button type="button" class="btn btn-outline-secondary" id="btn-mapa-satellite"><i class="fas fa-satellite"></i> Satélite</button>
-                                    <button type="button" class="btn btn-outline-dark" id="btn-mapa-dark"><i class="fas fa-moon"></i> Noturno</button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Mapa -->
-                        <div class="map-container">
-                            <div id="map"></div>
-                            <div id="error-message" class="alert alert-warning">
-                                <i class="fas fa-exclamation-triangle me-2"></i> 
-                                Não foi possível carregar o mapa. Tentando uma alternativa...
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="showDisasters" checked>
+                                <label class="form-check-label" for="showDisasters">Mostrar desastres naturais na região</label>
                             </div>
                             
-                            <!-- Legenda de Temperatura -->
-                            <div class="legend" id="temp-legend">
-                                <h6>Temperatura</h6>
-                                <div class="legend-content">
-                                    <!-- Será preenchido via JavaScript -->
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Botão para abrir no Google Maps -->
-                        <div class="text-center mt-3 mb-3">
-                            <a href="{{ url_for('abrir_mapa') }}" class="btn btn-primary">
-                                <i class="fab fa-google me-2"></i>Abrir no Google Maps
-                            </a>
-                        </div>
-                        
-                        <!-- Formulário para buscar novo local no mapa -->
-                        <div class="mt-4">
-                            <h4 class="mb-3">Buscar outro local no mapa</h4>
-                            <form action="{{ url_for('mapa') }}" method="GET" class="d-flex">
-                                <input type="text" name="cidade" class="form-control me-2" placeholder="Digite o nome da cidade ou bairro..." required>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-search"></i> Buscar
-                                </button>
-                            </form>
+                            <button id="debug-toggle" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-bug me-1"></i> Modo Debug
+                            </button>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Nova seção: Desastres Naturais na Região -->
-                <div class="card shadow-lg mb-4">
-                    <div class="card-header bg-warning text-dark">
-                        <h2 class="text-center mb-0">
-                            <i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais em {{ weather.regiao.nome }}
-                        </h2>
-                    </div>
-                    <div class="card-body">
-                        <!-- Desktop version (hidden on small screens) -->
-                        <div class="table-responsive d-none d-md-block">
-                            <table class="table table-hover">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Tipo</th>
-                                        <th>Local</th>
-                                        <th>Data</th>
-                                        <th>Pessoas Afetadas</th>
-                                        <th>Detalhes</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for desastre in desastres %}
-                                    <tr>
-                                        <td>
-                                            <span class="badge bg-{{ desastre.badge_class }}">{{ desastre.tipo }}</span>
-                                        </td>
-                                        <td>{{ desastre.local }}</td>
-                                        <td>{{ desastre.data }}</td>
-                                        <td>{{ desastre.pessoas_afetadas }}</td>
-                                        <td>{{ desastre.detalhes }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Mobile version (visible only on small screens) -->
-                        <div class="d-md-none">
-                            <div class="accordion" id="accordionDesastres">
+            </div>
+
+            <!-- Desastres na Região -->
+            <div class="card shadow-lg mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h3 class="h5 mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Desastres Naturais na Região</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Local</th>
+                                    <th>Data</th>
+                                    <th>Pessoas Afetadas</th>
+                                    <th>Detalhes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                                 {% for desastre in desastres %}
-                                <div class="accordion-item mb-2 border">
-                                    <h2 class="accordion-header" id="heading{{ loop.index }}">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="false" aria-controls="collapse{{ loop.index }}">
-                                            <span class="badge bg-{{ desastre.badge_class }} me-2">{{ desastre.tipo }}</span>
-                                            <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ desastre.local }}</span>
-                                        </button>
-                                    </h2>
-                                    <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#accordionDesastres">
-                                        <div class="accordion-body">
-                                            <div class="row">
-                                                <div class="col-5 fw-bold">Local:</div>
-                                                <div class="col-7">{{ desastre.local }}</div>
-                                            </div>
-                                            <div class="row">
-                                                <div class="col-5 fw-bold">Data:</div>
-                                                <div class="col-7">{{ desastre.data }}</div>
-                                            </div>
-                                            <div class="row">
-                                                <div class="col-5 fw-bold">Afetados:</div>
-                                                <div class="col-7">{{ desastre.pessoas_afetadas }}</div>
-                                            </div>
-                                            <div class="row mt-2">
-                                                <div class="col-12 fw-bold">Detalhes:</div>
-                                                <div class="col-12">{{ desastre.detalhes }}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <tr>
+                                    <td><span class="badge bg-{{ desastre.badge_class }}">{{ desastre.tipo }}</span></td>
+                                    <td>{{ desastre.local }}</td>
+                                    <td>{{ desastre.data }}</td>
+                                    <td>{{ desastre.pessoas_afetadas }}</td>
+                                    <td>{{ desastre.detalhes }}</td>
+                                </tr>
                                 {% endfor %}
-                            </div>
-                        </div>
-                        
-                        {% if desastres|length == 0 %}
-                        <div class="alert alert-info mt-3">
-                            <i class="fas fa-info-circle me-2"></i> Não foram encontrados registros de desastres naturais para esta região específica.
-                        </div>
-                        {% endif %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                
-                <!-- Rodapé -->
-                <div class="text-center mt-4 mb-3">
-                    <a href="https://openweathermap.org/" target="_blank" class="text-white text-decoration-none small">
-                        <span>Dados fornecidos por OpenWeatherMap API</span>
-                        <img src="https://openweathermap.org/themes/openweathermap/assets/vendor/owm/img/logo_OpenWeatherMap_orange.svg" alt="OpenWeatherMap" class="ms-2" height="20">
-                    </a>
+            </div>
+            
+            <!-- Área de Debug (invisível por padrão) -->
+            <div id="debug-info" class="debug-info">
+                <h4>Informações de Debug</h4>
+                <div id="debug-coordinates">
+                    <!-- Será preenchido via JavaScript -->
                 </div>
+            </div>
+
+            <!-- Rodapé com créditos -->
+            <div class="text-center mt-3 mb-5">
+                <a href="https://openweathermap.org/" target="_blank" class="text-white text-decoration-none small">
+                    <span>Dados fornecidos por OpenWeatherMap API</span>
+                    <img src="https://openweathermap.org/themes/openweathermap/assets/vendor/owm/img/logo_OpenWeatherMap_orange.svg" alt="OpenWeatherMap" class="ms-2" height="20">
+                </a>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <!-- Bootstrap JS Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Coordenadas da localização
-            var lat = parseFloat('{{ weather.lat }}');
-            var lon = parseFloat('{{ weather.lon }}');
-            var cidade = "{{ weather.cidade }}";
-            var temperatura = parseInt('{{ weather.temperatura }}');
-            var descricao = "{{ weather.descricao }}";
-            var icone = "{{ weather.icone }}";
-            
-            // Informações da região
-            var regiaoNome = "{{ weather.regiao.nome }}";
-            var regiaoRaio = parseInt('{{ weather.regiao.raio }}');
-            var regiaoTipo = "{{ weather.regiao.tipo }}"; // 'bairro' ou 'cidade'
-            
-            // Esconder legenda inicialmente
-            document.getElementById('temp-legend').style.display = 'none';
-            
+{% block scripts %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Obter dados passados pelo Flask
+        const lat = {{ weather.lat }};
+        const lon = {{ weather.lon }};
+        const cidade = "{{ cidade }}";
+        const regiao_nome = "{{ weather.regiao.nome }}";
+        const raio = {{ weather.regiao.raio }};
+        const tipo_regiao = "{{ weather.regiao.tipo }}";
+        
+        // Logar para debug
+        console.log("Coordenadas recebidas:", lat, lon);
+        console.log("Cidade:", cidade);
+        console.log("Nome da região:", regiao_nome);
+        console.log("Raio da região:", raio, "metros");
+        console.log("Tipo de região:", tipo_regiao);
+        
+        // Atualizar área de debug
+        const debugCoordinatesDiv = document.getElementById('debug-coordinates');
+        if (debugCoordinatesDiv) {
+            debugCoordinatesDiv.innerHTML = `
+                <p><strong>Cidade:</strong> ${cidade}</p>
+                <p><strong>Região:</strong> ${regiao_nome}</p>
+                <p><strong>Coordenadas:</strong> ${lat}, ${lon}</p>
+                <p><strong>Raio:</strong> ${(raio/1000).toFixed(2)} km</p>
+                <p><strong>Tipo de região:</strong> ${tipo_regiao}</p>
+                <p><strong>Zoom inicial:</strong> <span id="debug-zoom"></span></p>
+            `;
+        }
+        
+        // Calcular zoom apropriado baseado no raio
+        let zoom;
+        if (raio <= 2000) { // Para bairros
+            zoom = 14;
+        } else if (raio <= 10000) { // Para cidades médias
+            zoom = 12;
+        } else { // Para cidades grandes
+            zoom = 10;
+        }
+        
+        // Verificar se as coordenadas são números válidos
+        const validLat = typeof lat === 'number' && !isNaN(lat) ? lat : -22.9068; // Rio de Janeiro como fallback
+        const validLon = typeof lon === 'number' && !isNaN(lon) ? lon : -43.1729;
+        
+        console.log("Coordenadas validadas:", validLat, validLon);
+        
+        // Inicializar o mapa
+        const map = L.map('map').setView([validLat, validLon], zoom);
+        
+        // Camadas de mapa disponíveis
+        const baseMaps = {
+            "Ruas": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }),
+            "Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            }),
+            "Mapa Escuro": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            }),
+            "Mapa Topográfico": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+            })
+        };
+        
+        // Adicionar camada padrão
+        baseMaps["Ruas"].addTo(map);
+        
+        // Adicionar controle de camadas
+        L.control.layers(baseMaps).addTo(map);
+        
+        // Criar ícone personalizado para o clima
+        const weatherIcon = L.divIcon({
+            html: `<div class="weather-icon-container">
+                    <img src="https://openweathermap.org/img/wn/{{ weather.icone }}.png" alt="{{ weather.descricao }}">
+                    <span class="temp-label">{{ weather.temperatura }}°C</span>
+                  </div>`,
+            className: 'weather-marker-icon',
+            iconSize: [60, 60],
+            iconAnchor: [30, 30]
+        });
+        
+        // Adicionar marcador principal
+        const marker = L.marker([validLat, validLon], { icon: weatherIcon }).addTo(map);
+        marker.bindPopup(`
+            <div class="weather-popup">
+                <h3>${cidade}</h3>
+                <p><strong>${tipo_regiao.charAt(0).toUpperCase() + tipo_regiao.slice(1)}</strong></p>
+                <p><img src="https://openweathermap.org/img/wn/{{ weather.icone }}.png" alt="{{ weather.descricao }}"> {{ weather.temperatura }}°C</p>
+                <p class="text-capitalize">{{ weather.descricao }}</p>
+                <p>Umidade: {{ weather.umidade }}% | Vento: {{ weather.vento }} m/s</p>
+                <p><a href="{{ url_for('insights') }}?cidade={{ cidade }}" class="btn btn-sm btn-primary">Ver mais detalhes</a></p>
+            </div>
+        `);
+        
+        // Definir cor do círculo baseado no tipo de região
+        const corCirculo = tipo_regiao === 'bairro' ? '#3388ff' : '#ff3333';
+        
+        // Adicionar círculo para representar a região
+        const circulo = L.circle([validLat, validLon], {
+            color: corCirculo,
+            fillColor: corCirculo,
+            fillOpacity: 0.1,
+            weight: 3,
+            radius: raio
+        }).addTo(map);
+        
+        // Adicionar popup ao círculo
+        circulo.bindPopup(`
+            <div class="region-popup">
+                <h3>Região: ${regiao_nome || cidade}</h3>
+                <p>Tipo: ${tipo_regiao.charAt(0).toUpperCase() + tipo_regiao.slice(1)}</p>
+                <p>Raio aproximado: ${(raio/1000).toFixed(1)} km</p>
+                <p>Temperatura: {{ weather.temperatura }}°C</p>
+            </div>
+        `);
+        
+        // Ajustar o mapa para mostrar todo o círculo após um pequeno delay
+        // Garantir que o mapa está completamente renderizado antes de ajustar as bounds
+        setTimeout(() => {
+            // Forçar o mapa a ajustar-se ao círculo
             try {
-                // Calcular o nível de zoom apropriado com base no raio da região
-                var zoomLevel;
-                if (regiaoRaio <= 2000) { // Bairros pequenos
-                    zoomLevel = 14;
-                } else if (regiaoRaio <= 5000) { // Bairros grandes
-                    zoomLevel = 13;
-                } else if (regiaoRaio <= 10000) { // Cidades pequenas
-                    zoomLevel = 12;
-                } else if (regiaoRaio <= 20000) { // Cidades médias
-                    zoomLevel = 11;
-                } else { // Cidades grandes
-                    zoomLevel = 10;
-                }
-                
-                // Inicializar o mapa com Leaflet já no local e zoom corretos
-                var map = L.map('map', {
-                    center: [lat, lon],
-                    zoom: zoomLevel
-                });
-                
-                // Camada de mapa base - OpenStreetMap
-                var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                    maxZoom: 19
-                }).addTo(map);
-                
-                // Camada de satélite - ESRI
-                var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                    maxZoom: 19
-                });
-                
-                // Camada de mapa escuro - CartoDB
-                var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                    maxZoom: 19
-                });
-                
-                // Criar ícone personalizado
-                var weatherIcon = L.icon({
-                    iconUrl: 'https://openweathermap.org/img/wn/' + icone + '@2x.png',
-                    iconSize: [50, 50],
-                    iconAnchor: [25, 25],
-                    popupAnchor: [0, -25]
-                });
-                
-                // Adicionar círculo para destacar a região
-                var circleColor = regiaoTipo === 'bairro' ? '#3388ff' : '#ff3333';
-                var circleOpacity = 0.3;
-                var circleBorderWeight = 3;
-                
-                var regionCircle = L.circle([lat, lon], {
-                    color: circleColor,
-                    weight: circleBorderWeight,
-                    fillColor: circleColor,
-                    fillOpacity: circleOpacity,
-                    radius: regiaoRaio // raio em metros
-                }).addTo(map);
-                
-                // Adicionar um marcador de destaque central também (além do ícone climático)
-                var centralMarker = L.circleMarker([lat, lon], {
-                    radius: 8,
-                    fillColor: circleColor,
-                    color: "#fff",
-                    weight: 2,
-                    opacity: 1,
-                    fillOpacity: 1
-                }).addTo(map);
-                
-                // Adicionar o marcador principal com ícone climático
-                var marker = L.marker([lat, lon], {icon: weatherIcon}).addTo(map);
-                marker.bindPopup(
-                    '<div class="weather-popup">' +
-                    '<h5>' + cidade + '</h5>' +
-                    '<p class="small text-muted">Região: ' + regiaoNome + '</p>' +
-                    '<img src="https://openweathermap.org/img/wn/' + icone + '@2x.png" alt="' + descricao + '">' +
-                    '<p>' + temperatura + '°C</p>' +
-                    '<p class="text-capitalize">' + descricao + '</p>' +
-                    '</div>'
-                );
-                
-                // Abrir o popup imediatamente após o mapa carregar
-                map.whenReady(function() {
-                    marker.openPopup();
-                });
-                
-                // Criar pontos de temperatura ao redor
-                var tempPoints = [];
-                var tempCircles = [];
-                
-                // Gerar pontos de temperatura com alguma variação ao redor da localização principal
-                function generateTempPoints() {
-                    tempPoints = [];
-                    tempCircles = [];
-                    var numPoints = 12;
-                    var radius = 0.15; // Graus de latitude/longitude
-                    
-                    for (var i = 0; i < numPoints; i++) {
-                        var angle = Math.random() * Math.PI * 2;
-                        var distance = Math.random() * radius;
-                        var tempLat = lat + distance * Math.cos(angle);
-                        var tempLon = lon + distance * Math.sin(angle);
-                        // Variação da temperatura baseada na distância e um fator aleatório
-                        var randFactor = Math.random() > 0.5 ? 1 : -1;
-                        var tempVariation = Math.floor(Math.random() * 5) * randFactor;
-                        var pointTemp = temperatura + tempVariation;
-                        
-                        tempPoints.push({
-                            lat: tempLat,
-                            lon: tempLon,
-                            temp: pointTemp
-                        });
-                    }
-                }
-                
-                // Mapear temperatura para cor
-                function getTempColor(temp) {
-                    if (temp <= 0) return '#9EC5FE'; // Azul claro para muito frio
-                    if (temp <= 5) return '#6EA8FE'; // Azul para frio
-                    if (temp <= 10) return '#3F8BFE'; // Azul mais escuro
-                    if (temp <= 15) return '#98EECC'; // Verde claro
-                    if (temp <= 20) return '#79E0A9'; // Verde
-                    if (temp <= 25) return '#FEE440'; // Amarelo
-                    if (temp <= 30) return '#FDAC42'; // Laranja
-                    if (temp <= 35) return '#FD8A42'; // Laranja escuro
-                    return '#F94144';                 // Vermelho para muito quente
-                }
-                
-                // Mostrar pontos de temperatura
-                function showTempPoints() {
-                    // Limpar pontos anteriores
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    tempCircles = [];
-                    
-                    // Gerar novos pontos
-                    generateTempPoints();
-                    
-                    // Adicionar círculos coloridos com temperaturas
-                    tempPoints.forEach(point => {
-                        var color = getTempColor(point.temp);
-                        
-                        // Criar marcador com estilo personalizado
-                        var tempMarker = L.divIcon({
-                            className: 'temp-marker',
-                            html: '<div style="background-color:' + color + '; width:30px; height:30px; display:flex; align-items:center; justify-content:center;">' + point.temp + '°</div>',
-                            iconSize: [30, 30],
-                            iconAnchor: [15, 15]
-                        });
-                        
-                        var circle = L.marker([point.lat, point.lon], {icon: tempMarker}).addTo(map);
-                        tempCircles.push(circle);
-                    });
-                }
-                
-                // Criar legenda de temperatura
-                function createTempLegend() {
-                    var temps = [0, 5, 10, 15, 20, 25, 30, 35, 40];
-                    var legendContent = document.querySelector('.legend-content');
-                    legendContent.innerHTML = '';
-                    
-                    temps.forEach(function(temp, index) {
-                        if (index < temps.length - 1) {
-                            var color = getTempColor(temp);
-                            var item = document.createElement('div');
-                            item.className = 'legend-item';
-                            
-                            var colorDiv = document.createElement('div');
-                            colorDiv.className = 'legend-color';
-                            colorDiv.style.backgroundColor = color;
-                            
-                            var textDiv = document.createElement('span');
-                            textDiv.textContent = temp + '°C - ' + temps[index + 1] + '°C';
-                            
-                            item.appendChild(colorDiv);
-                            item.appendChild(textDiv);
-                            legendContent.appendChild(item);
-                        }
-                    });
-                }
-                
-                // Botões para alternar entre diferentes mapas
-                document.getElementById('btn-mapa-streets').addEventListener('click', function() {
-                    map.removeLayer(satelliteLayer);
-                    map.removeLayer(darkLayer);
-                    osmLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-satellite').addEventListener('click', function() {
-                    map.removeLayer(osmLayer);
-                    map.removeLayer(darkLayer);
-                    satelliteLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-dark').addEventListener('click', function() {
-                    map.removeLayer(osmLayer);
-                    map.removeLayer(satelliteLayer);
-                    darkLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-temp').addEventListener('click', function() {
-                    // Garantir que temos uma camada base
-                    if (!map.hasLayer(osmLayer) && !map.hasLayer(satelliteLayer) && !map.hasLayer(darkLayer)) {
-                        osmLayer.addTo(map);
-                    }
-                    
-                    // Mostrar pontos de temperatura
-                    showTempPoints();
-                    
-                    // Criar e mostrar legenda
-                    createTempLegend();
-                    document.getElementById('temp-legend').style.display = 'block';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                // Adicionar legenda da região
-                var regionLegend = L.control({position: 'bottomright'});
-                regionLegend.onAdd = function(map) {
-                    var div = L.DomUtil.create('div', 'info legend');
-                    div.style.backgroundColor = 'white';
-                    div.style.padding = '8px';
-                    div.style.borderRadius = '5px';
-                    div.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
-                    
-                    div.innerHTML = '<h6 style="margin:0 0 5px 0;font-weight:bold;">Região</h6>' +
-                                   '<div style="display:flex;align-items:center;margin-bottom:5px;">' +
-                                   '<div style="width:15px;height:15px;background-color:' + circleColor + ';opacity:' + circleOpacity + ';border:1px solid ' + circleColor + ';border-radius:50%;margin-right:8px;"></div>' +
-                                   '<span>' + regiaoNome + ' (' + regiaoTipo + ')</span>' +
-                                   '</div>';
-                    
-                    return div;
-                };
-                regionLegend.addTo(map);
-                
-            } catch (error) {
-                console.error("Erro ao inicializar o mapa:", error);
-                document.getElementById('map').style.display = 'none';
-                document.getElementById('error-message').style.display = 'block';
+                const bounds = circulo.getBounds();
+                console.log("Ajustando mapa para bounds:", bounds);
+                map.fitBounds(bounds);
+                // Verificar se o centro do mapa está correto após o ajuste
+                console.log("Centro do mapa após ajuste:", map.getCenter());
+            } catch (e) {
+                console.error("Erro ao ajustar mapa:", e);
+                // Fallback se getBounds() falhar
+                map.setView([validLat, validLon], zoom);
+            }
+        }, 300);  // Aumentar o tempo de espera para garantir que o mapa está pronto
+        
+        // Abrir o popup do marcador automaticamente
+        setTimeout(() => {
+            marker.openPopup();
+        }, 800);  // Atrasar ainda mais para garantir que o mapa está estável
+        
+        // Evento para quando o mapa terminar de carregar
+        map.whenReady(() => {
+            console.log("Mapa carregado com centro em:", map.getCenter(), "zoom:", map.getZoom());
+            if (document.getElementById('debug-zoom')) {
+                document.getElementById('debug-zoom').textContent = map.getZoom();
             }
         });
-    </script>
-</body>
-</html> 
+        
+        // Interações com os controles do mapa
+        const mapViewSelect = document.getElementById('mapView');
+        mapViewSelect.addEventListener('change', function() {
+            const selectedMap = this.value;
+            
+            // Remover todas as camadas
+            map.eachLayer(function(layer) {
+                if (layer instanceof L.TileLayer) {
+                    map.removeLayer(layer);
+                }
+            });
+            
+            // Adicionar a camada selecionada
+            if (selectedMap === 'streets') {
+                baseMaps["Ruas"].addTo(map);
+            } else if (selectedMap === 'satellite') {
+                baseMaps["Satélite"].addTo(map);
+            } else if (selectedMap === 'dark') {
+                baseMaps["Mapa Escuro"].addTo(map);
+            } else if (selectedMap === 'topo') {
+                baseMaps["Mapa Topográfico"].addTo(map);
+            }
+        });
+        
+        // Slider de raio da região
+        const regionRadiusSlider = document.getElementById('regionRadius');
+        const radiusValueSpan = document.getElementById('radiusValue');
+        
+        regionRadiusSlider.addEventListener('input', function() {
+            const novoRaio = parseInt(this.value);
+            radiusValueSpan.textContent = `${(novoRaio/1000).toFixed(1)} km`;
+            
+            // Atualizar o raio do círculo
+            circulo.setRadius(novoRaio);
+            
+            // Reajustar o mapa para mostrar o novo círculo
+            map.fitBounds(circulo.getBounds());
+        });
+        
+        // Toggle para modo debug
+        const debugToggle = document.getElementById('debug-toggle');
+        const debugInfo = document.getElementById('debug-info');
+        
+        debugToggle.addEventListener('click', function() {
+            debugInfo.classList.toggle('visible');
+        });
+        
+        // Adicionar marcadores de desastres
+        {% if desastres %}
+        const disasterMarkers = [];
+        {% for desastre in desastres %}
+        // Usar as mesmas coordenadas da região, com pequenos deslocamentos para evitar sobreposição
+        const desastreLat = validLat + (Math.random() - 0.5) * 0.01;
+        const desastreLon = validLon + (Math.random() - 0.5) * 0.01;
+        
+        // Definir cor com base no tipo de desastre
+        let disasterColor = 'blue';
+        {% if desastre.tipo == 'Inundação' %}
+        disasterColor = '#3388ff';
+        {% elif desastre.tipo == 'Deslizamento' %}
+        disasterColor = '#dc3545';
+        {% elif desastre.tipo == 'Seca' %}
+        disasterColor = '#ffc107';
+        {% else %}
+        disasterColor = '#fd7e14';
+        {% endif %}
+        
+        // Criar marcador para o desastre
+        const disasterMarker = L.circleMarker([desastreLat, desastreLon], {
+            radius: 8,
+            fillColor: disasterColor,
+            color: '#fff',
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+        }).addTo(map);
+        
+        disasterMarker.bindPopup(`
+            <div class="popup-content">
+                <h5>{{ desastre.tipo }}</h5>
+                <p><strong>Local:</strong> {{ desastre.local }}</p>
+                <p><strong>Data:</strong> {{ desastre.data }}</p>
+                <p><strong>Pessoas afetadas:</strong> {{ desastre.pessoas_afetadas }}</p>
+                <p>{{ desastre.detalhes }}</p>
+            </div>
+        `);
+        
+        disasterMarkers.push(disasterMarker);
+        {% endfor %}
+        
+        // Toggle para mostrar/esconder desastres
+        const showDisastersToggle = document.getElementById('showDisasters');
+        showDisastersToggle.addEventListener('change', function() {
+            if (this.checked) {
+                disasterMarkers.forEach(marker => map.addLayer(marker));
+            } else {
+                disasterMarkers.forEach(marker => map.removeLayer(marker));
+            }
+        });
+        {% endif %}
+    });
+</script>
+{% endblock %} 

@@ -674,327 +674,121 @@
     <!-- Script do mapa -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Coordenadas da localização
-            var lat = parseFloat('{{ map_data.lat }}');
-            var lon = parseFloat('{{ map_data.lon }}');
-            var cidade = "{{ map_data.cidade }}";
-            var temperatura = parseInt('{{ map_data.temperatura }}');
-            var descricao = "{{ map_data.descricao }}";
-            var icone = "{{ map_data.icone }}";
+            // Obter os dados do mapa passados pelo Flask
+            const mapData = {{ map_data|tojson }};
+            console.log("Dados do mapa recebidos:", mapData);
             
-            // Esconder legenda inicialmente
-            document.getElementById('temp-legend').style.display = 'none';
+            // Verificar se as coordenadas recebidas são válidas
+            let lat = typeof mapData.lat === 'number' ? mapData.lat : -22.9068;
+            let lon = typeof mapData.lon === 'number' ? mapData.lon : -43.1729;
+            let cidade = mapData.cidade || 'Rio de Janeiro';
+            let temperatura = mapData.temperatura || 25;
+            let descricao = mapData.descricao || 'céu limpo';
+            let icone = mapData.icone || '01d';
+            let raio = mapData.raio || 5000; // Raio em metros
+            let tipoRegiao = mapData.tipo_regiao || 'cidade';
             
-            try {
-                // Inicializar o mapa com Leaflet com zoom mais aproximado para melhor qualidade
-                var map = L.map('map', {
-                    zoomControl: true,
-                    maxZoom: 19,
-                    minZoom: 3
-                }).setView([lat, lon], 11);
-                
-                // Camada de mapa base - OpenStreetMap com melhor resolução
-                var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">HOT</a>',
-                    maxZoom: 19
-                }).addTo(map);
-                
-                // Camada de satélite - ESRI com melhor qualidade
-                var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                    maxZoom: 19
-                });
-                
-                // Camada de mapa escuro - CartoDB com melhor qualidade
-                var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                    maxZoom: 19
-                });
-                
-                // Camada topográfica para melhor visualização do terreno
-                var topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-                    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
-                    maxZoom: 17
-                });
-                
-                // Adicionar botão para o mapa topográfico
-                var topoButton = document.createElement('button');
-                topoButton.type = 'button';
-                topoButton.className = 'btn btn-outline-success';
-                topoButton.id = 'btn-mapa-topo';
-                topoButton.innerHTML = '<i class="fas fa-mountain"></i> Topográfico';
-                document.querySelector('.btn-group').appendChild(topoButton);
-                
-                // Criar ícone personalizado para o marcador principal
-                var weatherIcon = L.icon({
-                    iconUrl: 'https://openweathermap.org/img/wn/' + icone + '@2x.png',
-                    iconSize: [60, 60],
-                    iconAnchor: [30, 30],
-                    popupAnchor: [0, -30],
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-                    shadowSize: [41, 41],
-                    shadowAnchor: [12, 41]
-                });
-                
-                // Adicionar um círculo para destacar a região pesquisada
-                var regionCircle = L.circle([lat, lon], {
-                    color: '#3388ff',
-                    fillColor: '#3388ff',
-                    fillOpacity: 0.2,
-                    weight: 3,
-                    radius: 3000  // Reduzindo de 10km para 3km para limitar apenas à cidade
-                }).addTo(map);
-                
-                // Adicionar marcador principal
-                var marker = L.marker([lat, lon], {icon: weatherIcon}).addTo(map);
-                marker.bindPopup(
-                    '<div class="weather-popup" style="text-align:center;">' +
-                    '<h5>' + cidade + '</h5>' +
-                    '<img src="https://openweathermap.org/img/wn/' + icone + '@2x.png" alt="' + descricao + '" style="width:60px;height:60px;">' +
-                    '<p style="font-size: 18px; font-weight: bold;">' + temperatura + '°C</p>' +
-                    '<p class="text-capitalize" style="margin-top:-5px;">' + descricao + '</p>' +
-                    '</div>'
-                ).openPopup();
-                
-                // Criar pontos de temperatura ao redor com um padrão mais realista
-                var tempPoints = [];
-                var tempCircles = [];
-                
-                // Gerar pontos de temperatura com alguma variação ao redor da localização principal
-                function generateTempPoints() {
-                    tempPoints = [];
-                    tempCircles = [];
-                    var numPoints = 10;  // Mais pontos para melhor visualização
-                    var radius = 0.15;   // Graus de latitude/longitude
-                    
-                    // Criar pontos em anéis concêntricos para um padrão mais realista
-                    for (var ring = 1; ring <= 3; ring++) {
-                        var ringPoints = 8;
-                        var ringRadius = radius * ring;
-                        
-                        for (var i = 0; i < ringPoints; i++) {
-                            var angle = (i / ringPoints) * Math.PI * 2;
-                            var distance = ringRadius * (0.8 + Math.random() * 0.4); // Adicionar variação ao raio
-                            var tempLat = lat + distance * Math.cos(angle);
-                            var tempLon = lon + distance * Math.sin(angle);
-                            
-                            // Variação da temperatura baseada na distância e um fator aleatório
-                            // Usa distância para criar um gradiente realista
-                            var distanceFactor = distance / (radius * 3);
-                            var randFactor = Math.random() * 2 - 1;
-                            var tempVariation = Math.floor((distanceFactor * 6 + randFactor * 2));
-                            var pointTemp = temperatura + tempVariation;
-                            
-                            tempPoints.push({
-                                lat: tempLat,
-                                lon: tempLon,
-                                temp: pointTemp,
-                                radius: 400 + Math.random() * 300
-                            });
-                        }
-                    }
-                }
-                
-                // Mapear temperatura para cor
-                function getTempColor(temp) {
-                    if (temp <= 0) return '#9EC5FE'; // Azul claro para muito frio
-                    if (temp <= 5) return '#6EA8FE'; // Azul para frio
-                    if (temp <= 10) return '#3F8BFE'; // Azul mais escuro
-                    if (temp <= 15) return '#98EECC'; // Verde claro
-                    if (temp <= 20) return '#79E0A9'; // Verde
-                    if (temp <= 25) return '#FEE440'; // Amarelo
-                    if (temp <= 30) return '#FDAC42'; // Laranja
-                    if (temp <= 35) return '#FD8A42'; // Laranja escuro
-                    return '#F94144';                 // Vermelho para muito quente
-                }
-                
-                // Mostrar pontos de temperatura
-                function showTempPoints() {
-                    // Limpar pontos anteriores
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    tempCircles = [];
-                    
-                    // Gerar novos pontos
-                    generateTempPoints();
-                    
-                    // Primeiro adicionar círculos coloridos como áreas de temperatura
-                    tempPoints.forEach(point => {
-                        var color = getTempColor(point.temp);
-                        
-                        // Adicionar círculo para mostrar a área de temperatura
-                        var circle = L.circle([point.lat, point.lon], {
-                            color: color,
-                            fillColor: color,
-                            fillOpacity: 0.3,
-                            weight: 1,
-                            radius: point.radius
-                        }).addTo(map);
-                        
-                        tempCircles.push(circle);
-                    });
-                    
-                    // Depois adicionar marcadores com os valores de temperatura
-                    tempPoints.forEach(point => {
-                        var color = getTempColor(point.temp);
-                        
-                        // Criar marcador com estilo personalizado
-                        var tempMarker = L.divIcon({
-                            className: 'temp-marker',
-                            html: '<div style="background-color:' + color + '; width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:50%; color:white; font-weight:bold; border:2px solid white; box-shadow:0 0 10px rgba(0,0,0,0.4);">' + point.temp + '°</div>',
-                            iconSize: [36, 36],
-                            iconAnchor: [18, 18]
-                        });
-                        
-                        var marker = L.marker([point.lat, point.lon], {icon: tempMarker}).addTo(map);
-                        marker.bindPopup('Temperatura: ' + point.temp + '°C');
-                        tempCircles.push(marker);
-                    });
-                }
-                
-                // Criar legenda de temperatura
-                function createTempLegend() {
-                    var temps = [0, 5, 10, 15, 20, 25, 30, 35, 40];
-                    var legendContent = document.querySelector('.legend-content');
-                    legendContent.innerHTML = '';
-                    
-                    temps.forEach(function(temp, index) {
-                        if (index < temps.length - 1) {
-                            var color = getTempColor(temp);
-                            var item = document.createElement('div');
-                            item.className = 'legend-item';
-                            item.style.display = 'flex';
-                            item.style.alignItems = 'center';
-                            item.style.marginBottom = '6px';
-                            
-                            var colorDiv = document.createElement('div');
-                            colorDiv.className = 'legend-color';
-                            colorDiv.style.width = '18px';
-                            colorDiv.style.height = '18px';
-                            colorDiv.style.marginRight = '8px';
-                            colorDiv.style.borderRadius = '50%';
-                            colorDiv.style.backgroundColor = color;
-                            
-                            var textDiv = document.createElement('span');
-                            textDiv.textContent = temp + '°C - ' + temps[index + 1] + '°C';
-                            
-                            item.appendChild(colorDiv);
-                            item.appendChild(textDiv);
-                            legendContent.appendChild(item);
-                        }
-                    });
-                }
-                
-                // Botões para alternar entre diferentes mapas
-                document.getElementById('btn-mapa-streets').addEventListener('click', function() {
-                    map.removeLayer(satelliteLayer);
-                    map.removeLayer(darkLayer);
-                    map.removeLayer(topoLayer);
-                    osmLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-satellite').addEventListener('click', function() {
-                    map.removeLayer(osmLayer);
-                    map.removeLayer(darkLayer);
-                    map.removeLayer(topoLayer);
-                    satelliteLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-dark').addEventListener('click', function() {
-                    map.removeLayer(osmLayer);
-                    map.removeLayer(satelliteLayer);
-                    map.removeLayer(topoLayer);
-                    darkLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-topo').addEventListener('click', function() {
-                    map.removeLayer(osmLayer);
-                    map.removeLayer(satelliteLayer);
-                    map.removeLayer(darkLayer);
-                    topoLayer.addTo(map);
-                    
-                    // Remover todos os círculos de temperatura
-                    tempCircles.forEach(circle => map.removeLayer(circle));
-                    document.getElementById('temp-legend').style.display = 'none';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Garantir que o círculo da região fique visível
-                    if (!map.hasLayer(regionCircle)) {
-                        regionCircle.addTo(map);
-                    }
-                });
-                
-                document.getElementById('btn-mapa-temp').addEventListener('click', function() {
-                    // Garantir que temos uma camada base
-                    if (!map.hasLayer(osmLayer) && !map.hasLayer(satelliteLayer) && !map.hasLayer(darkLayer) && !map.hasLayer(topoLayer)) {
-                        osmLayer.addTo(map);
-                    }
-                    
-                    // Mostrar pontos de temperatura
-                    showTempPoints();
-                    
-                    // Criar e mostrar legenda
-                    createTempLegend();
-                    document.getElementById('temp-legend').style.display = 'block';
-                    
-                    // Atualizar estado dos botões
-                    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                });
-                
-                // Adicionar controle de escala
-                L.control.scale({
-                    imperial: false,
-                    metric: true,
-                    position: 'bottomleft'
-                }).addTo(map);
-                
-            } catch (error) {
-                console.error("Erro ao inicializar o mapa:", error);
-                document.getElementById('map').style.display = 'none';
-                document.getElementById('error-message').style.display = 'block';
+            console.log(`Coordenadas validadas: ${lat}, ${lon}`);
+            console.log(`Cidade: ${cidade}, Tipo: ${tipoRegiao}, Raio: ${raio}m`);
+            
+            // Converter raio de metros para quilômetros para melhor legibilidade
+            let raioKm = (raio / 1000).toFixed(1);
+            
+            // Calcular zoom apropriado com base no raio
+            let zoom;
+            if (raio <= 2000) { // Para bairros
+                zoom = 14;
+            } else if (raio <= 10000) { // Para cidades médias
+                zoom = 12;
+            } else { // Para cidades grandes
+                zoom = 10;
             }
+            
+            // Inicializar o mapa
+            const map = L.map('map').setView([lat, lon], zoom);
+            
+            // Adicionar camada de base (OpenStreetMap)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            // Adicionar marcador com ícone personalizado para o clima
+            const weatherIcon = L.divIcon({
+                html: `<div class="weather-icon-container">
+                        <img src="https://openweathermap.org/img/w/${icone}.png" alt="${descricao}">
+                        <span class="temp-label">${Math.round(temperatura)}°C</span>
+                      </div>`,
+                className: 'weather-marker-icon',
+                iconSize: [60, 60],
+                iconAnchor: [30, 30]
+            });
+            
+            // Adicionar o marcador principal com informações do clima
+            const marker = L.marker([lat, lon], { icon: weatherIcon }).addTo(map);
+            marker.bindPopup(`
+                <div class="weather-popup">
+                    <h3>${cidade}</h3>
+                    <p><strong>${tipoRegiao.charAt(0).toUpperCase() + tipoRegiao.slice(1)}</strong></p>
+                    <p><img src="https://openweathermap.org/img/w/${icone}.png" alt="${descricao}"> ${Math.round(temperatura)}°C</p>
+                    <p>${descricao.charAt(0).toUpperCase() + descricao.slice(1)}</p>
+                    <p>Umidade: ${mapData.umidade}% | Vento: ${mapData.vento} m/s</p>
+                    <p><a href="#detalhe-clima">Clique para mais detalhes</a></p>
+                </div>
+            `);
+            
+            // Adicionar círculo para representar a região
+            const corCirculo = tipoRegiao === 'bairro' ? '#3388ff' : '#ff3333';
+            const circulo = L.circle([lat, lon], {
+                color: corCirculo,
+                fillColor: corCirculo,
+                fillOpacity: 0.1,
+                weight: 3,
+                radius: raio
+            }).addTo(map);
+            
+            // Adicionar popup ao círculo com informações sobre a região
+            circulo.bindPopup(`
+                <div class="region-popup">
+                    <h3>Região: ${cidade}</h3>
+                    <p>Tipo: ${tipoRegiao.charAt(0).toUpperCase() + tipoRegiao.slice(1)}</p>
+                    <p>Raio aproximado: ${raioKm} km</p>
+                    <p>Temperatura: ${Math.round(temperatura)}°C</p>
+                </div>
+            `);
+            
+            // Ajustar o mapa para mostrar todo o círculo após um pequeno delay
+            // (garantir que o mapa esteja completamente carregado)
+            setTimeout(() => {
+                map.fitBounds(circulo.getBounds());
+            }, 100);
+            
+            // Abrir o popup do marcador automaticamente
+            setTimeout(() => {
+                marker.openPopup();
+            }, 500);
+            
+            // Adicionar controle de camadas
+            const baseMaps = {
+                "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }),
+                "Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                }),
+                "Mapa Escuro": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                }),
+                "Mapa Topográfico": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+                })
+            };
+            
+            L.control.layers(baseMaps).addTo(map);
+            
+            // Evento para quando o mapa terminar de carregar
+            map.whenReady(() => {
+                console.log("Mapa carregado com centro em:", map.getCenter(), "zoom:", map.getZoom());
+            });
         });
     </script>
 </body>
