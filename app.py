@@ -1117,7 +1117,16 @@ def index():
     session['last_lon'] = weather_data['lon']
     
     forecast_data = get_forecast_data(weather_data['lat'], weather_data['lon'])
-    return render_template('index.html', weather=weather_data, forecast=forecast_data)
+    
+    # Lista de alunos para exibição no template
+    alunos = [
+        {"nome": "Yuri Fernandes de Oliveira", "papel": "Desenvolvedor Full Stack"},
+        {"nome": "Peterson Costa da Silva", "papel": "Desenvolvedor"},
+        {"nome": "Rodrigo Ortega G F Camacho", "papel": "Desenvolvedor"},
+        {"nome": "Leandro Yukio Yamashita", "papel": "Desenvolvedor"}
+    ]
+    
+    return render_template('index.html', weather=weather_data, forecast=forecast_data, alunos=alunos)
 
 @app.route('/buscar', methods=['POST'])
 def buscar():
@@ -1145,8 +1154,16 @@ def buscar():
             # Obter previsão do tempo
             forecast_data = get_forecast_data(weather_data['lat'], weather_data['lon'])
             
+            # Lista de alunos para exibição no template
+            alunos = [
+                {"nome": "Yuri Fernandes de Oliveira", "papel": "Desenvolvedor Full Stack"},
+                {"nome": "Peterson Costa da Silva", "papel": "Desenvolvedor"},
+                {"nome": "Rodrigo Ortega G F Camacho", "papel": "Desenvolvedor"},
+                {"nome": "Leandro Yukio Yamashita", "papel": "Desenvolvedor"}
+            ]
+            
             # Renderizar diretamente a página index com os dados obtidos
-            return render_template('index.html', weather=weather_data, forecast=forecast_data)
+            return render_template('index.html', weather=weather_data, forecast=forecast_data, alunos=alunos)
         except Exception as e:
             # Tratar erros inesperados
             app.logger.error(f"Erro ao buscar dados do clima: {str(e)}")

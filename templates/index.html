@@ -15,31 +15,40 @@
 </head>
 <body>
     <div class="container">
-        <div class="row justify-content-center mt-4">
+        <div class="text-center mt-4">
+            <img src="/static/logo_estacio.png" 
+                 alt="Logo da Estácio" style="max-width: 250px; height: auto; margin: 20px 0;">
+        </div>
+        <p style="text-align: center; font-size: 1.2rem; color: white; margin: 20px auto 30px; max-width: 800px; line-height: 1.6; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px;">
+            Este projeto acadêmico foi desenvolvido como parte das atividades educacionais na Estácio. Seu objetivo é demonstrar a aplicação de tecnologias como Python, Pandas e Plotly na visualização de dados usando a API do OpenWeatherMap.
+        </p>
+
+        <!-- Título Clima Brasil movido para cá -->
+        <h1 class="text-center text-white mb-4">
+            <i class="fas fa-cloud-sun me-2"></i>Clima Brasil
+        </h1>
+
+        <div class="row justify-content-center mt-2">
             <div class="col-md-10 col-lg-8">
                 <nav class="mb-4">
-                    <ul class="nav nav-pills nav-fill bg-white rounded-pill shadow-sm p-2">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="{{ url_for('index') }}">
+                    <ul class="nav nav-pills nav-fill bg-white rounded-3 shadow-sm p-2">
+                        <li class="nav-item m-1">
+                            <a class="nav-link active rounded-pill" href="{{ url_for('index') }}">
                                 <i class="fas fa-home me-2"></i>Página Inicial
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('insights') }}?cidade={{ weather.cidade }}">
-                                <i class="fas fa-chart-line me-2"></i>Insights Climáticos
+                        <li class="nav-item m-1">
+                            <a class="nav-link rounded-pill" href="{{ url_for('insights') }}?cidade={{ weather.cidade }}">
+                                <i class="fas fa-chart-line me-2"></i>Insights
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('turma') }}">
+                        <li class="nav-item m-1">
+                            <a class="nav-link rounded-pill" href="{{ url_for('turma') }}">
                                 <i class="fas fa-graduation-cap me-2"></i>Nossa Turma
                             </a>
                         </li>
                     </ul>
                 </nav>
-                
-                <h1 class="text-center text-white mb-4">
-                    <i class="fas fa-cloud-sun me-2"></i>Clima Brasil
-                </h1>
                 
                 <!-- Formulário de Busca -->
                 <div class="card shadow-lg mb-4 search-card">
